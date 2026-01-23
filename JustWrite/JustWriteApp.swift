@@ -3,10 +3,12 @@ import SwiftUI
 extension Notification.Name {
     static let toggleSidebar = Notification.Name("toggleSidebar")
     static let notesFolderChanged = Notification.Name("notesFolderChanged")
+    static let openNoteRequest = Notification.Name("openNoteRequest")
+    static let newNoteRequest = Notification.Name("newNoteRequest")
+    static let currentDocumentChanged = Notification.Name("currentDocumentChanged")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private var isAddingTab = false
     private var hasLaunched = false
 
     static let notesFolderKey = "notesFolder"
@@ -39,20 +41,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        NSWindow.allowsAutomaticWindowTabbing = true
+        // Disable tabs - single document at a time
+        NSWindow.allowsAutomaticWindowTabbing = false
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Disable tabbing on all windows
         for window in NSApp.windows {
-            window.tabbingMode = .preferred
+            window.tabbingMode = .disallowed
         }
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(windowWillBeAdded(_:)),
-            name: NSWindow.didBecomeKeyNotification,
-            object: nil
-        )
 
         // Track when documents are saved (to remember last opened)
         NotificationCenter.default.addObserver(
@@ -132,30 +129,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func windowWillBeAdded(_ notification: Notification) {
-        guard !isAddingTab,
-              let newWindow = notification.object as? NSWindow,
-              newWindow.tabbingMode != .disallowed else { return }
-
-        newWindow.tabbingMode = .preferred
-
-        // Find an existing document window to add this as a tab
-        let documentWindows = NSApp.windows.filter {
-            $0 != newWindow &&
-            $0.isVisible &&
-            $0.tabbingMode == .preferred &&
-            $0.tabbedWindows?.contains(newWindow) != true &&
-            String(describing: type(of: $0)) == String(describing: type(of: newWindow))
-        }
-
-        if let targetWindow = documentWindows.first {
-            isAddingTab = true
-            targetWindow.addTabbedWindow(newWindow, ordered: .above)
-            newWindow.makeKeyAndOrderFront(nil)
-            isAddingTab = false
-        }
-    }
-
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
         // Return false to prevent the default open panel
         // We handle opening in applicationDidFinishLaunching
@@ -178,9 +151,14 @@ struct JustWriteApp: App {
     var body: some Scene {
         DocumentGroup(newDocument: JustWriteDocument()) { file in
             ContentView(document: file.$document)
-                .background(WindowAccessor())
         }
         .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Note") {
+                    NotificationCenter.default.post(name: .newNoteRequest, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
             CommandGroup(after: .sidebar) {
                 Button("Toggle Sidebar") {
                     NotificationCenter.default.post(name: .toggleSidebar, object: nil)
@@ -199,25 +177,5 @@ struct JustWriteApp: App {
     private func toggleDistractionFree() {
         guard let window = NSApp.keyWindow else { return }
         window.toggleFullScreen(nil)
-    }
-}
-
-// MARK: - Window Accessor
-
-struct WindowAccessor: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            if let window = view.window {
-                window.tabbingMode = .preferred
-            }
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let window = nsView.window {
-            window.tabbingMode = .preferred
-        }
     }
 }

@@ -24,11 +24,12 @@ struct ContentView: View {
             if !showSidebar {
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSidebar = true } }) {
                     Image(systemName: "sidebar.left")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(Color(NSColor.windowBackgroundColor).opacity(0.9))
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.primary.opacity(0.7))
+                        .frame(width: 32, height: 32)
+                        .background(Color(NSColor.controlBackgroundColor))
                         .cornerRadius(6)
+                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
                 }
                 .buttonStyle(.plain)
                 .padding(12)
@@ -37,6 +38,56 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             withAnimation(.easeInOut(duration: 0.2)) {
                 showSidebar.toggle()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openNoteRequest)) { notification in
+            guard let url = notification.object as? URL else { return }
+            loadNote(from: url)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .newNoteRequest)) { _ in
+            createNewNote()
+        }
+    }
+
+    private func createNewNote() {
+        // Just clear the editor - don't touch any files
+        // User will manually save with Cmd+S when ready
+        document.text = ""
+
+        // Clear the document's file URL so Cmd+S triggers save dialog
+        if let currentDoc = NSDocumentController.shared.currentDocument {
+            currentDoc.fileURL = nil
+        }
+
+        // Update window title
+        NSApp.keyWindow?.title = "Untitled"
+
+        // Notify that current document changed (now untitled)
+        NotificationCenter.default.post(name: .currentDocumentChanged, object: nil)
+    }
+
+    private func loadNote(from url: URL) {
+        guard let currentDoc = NSDocumentController.shared.currentDocument else { return }
+
+        do {
+            // Set the file URL first
+            currentDoc.fileURL = url
+
+            // Use revert to properly load the file and update modification tracking
+            // This prevents "file changed by another application" warnings
+            try currentDoc.revert(toContentsOf: url, ofType: url.pathExtension == "md" ? "net.daringfireball.markdown" : "public.plain-text")
+
+            // Update window title
+            NSApp.keyWindow?.title = url.deletingPathExtension().lastPathComponent
+
+            // Notify that current document changed
+            NotificationCenter.default.post(name: .currentDocumentChanged, object: url)
+        } catch {
+            // Fallback: just read the content directly
+            if let content = try? String(contentsOf: url, encoding: .utf8) {
+                document.text = content
+                NSApp.keyWindow?.title = url.deletingPathExtension().lastPathComponent
+                NotificationCenter.default.post(name: .currentDocumentChanged, object: url)
             }
         }
     }
@@ -138,6 +189,13 @@ struct SidebarView: View {
         .onAppear {
             notesManager.refresh()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .notesFolderChanged)) { _ in
+            notesManager.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .currentDocumentChanged)) { notification in
+            notesManager.currentDocumentURL = notification.object as? URL
+            notesManager.refresh()
+        }
     }
 }
 
@@ -178,6 +236,7 @@ class NotesManager: ObservableObject {
     @Published var notesFolder: URL?
 
     private var folderObserver: Any?
+    private var documentObserver: Any?
 
     init() {
         refresh()
@@ -190,10 +249,22 @@ class NotesManager: ObservableObject {
         ) { [weak self] _ in
             self?.refresh()
         }
+
+        // Listen for current document changes
+        documentObserver = NotificationCenter.default.addObserver(
+            forName: .currentDocumentChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.currentDocumentURL = notification.object as? URL
+        }
     }
 
     deinit {
         if let observer = folderObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = documentObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -241,11 +312,11 @@ class NotesManager: ObservableObject {
     }
 
     func openDocument(at url: URL) {
-        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { doc, _, _ in
-            if let doc = doc {
-                UserDefaults.standard.set(url.path, forKey: "lastOpenedDocument")
-            }
-        }
+        // Post notification to request opening this note
+        // The ContentView will handle loading the content
+        NotificationCenter.default.post(name: .openNoteRequest, object: url)
+        currentDocumentURL = url
+        UserDefaults.standard.set(url.path, forKey: "lastOpenedDocument")
     }
 
     func changeNotesFolder() {
