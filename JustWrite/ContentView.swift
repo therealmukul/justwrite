@@ -55,10 +55,10 @@ struct MarkdownTextView: NSViewRepresentable {
         paragraphStyle.lineSpacing = 6
         textView.defaultParagraphStyle = paragraphStyle
 
-        // Text container setup
-        textView.textContainer?.widthTracksTextView = true
+        // Text container setup - don't track text view width so we can center manually
+        textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.containerSize = NSSize(
-            width: 0,
+            width: optimalTextWidth,
             height: CGFloat.greatestFiniteMagnitude
         )
 
@@ -131,19 +131,27 @@ struct MarkdownTextView: NSViewRepresentable {
 
         func updateTextInsets() {
             guard let textView = textView,
-                  let scrollView = textView.enclosingScrollView else { return }
+                  let scrollView = textView.enclosingScrollView,
+                  let textContainer = textView.textContainer else { return }
 
             let availableWidth = scrollView.frame.width
             let horizontalInset: CGFloat
+            let containerWidth: CGFloat
 
             if availableWidth > optimalTextWidth + (minimumHorizontalPadding * 2) {
                 // Center the text by calculating equal margins
+                containerWidth = optimalTextWidth
                 horizontalInset = (availableWidth - optimalTextWidth) / 2
             } else {
                 // Use minimum padding when window is narrow
+                containerWidth = max(100, availableWidth - (minimumHorizontalPadding * 2))
                 horizontalInset = minimumHorizontalPadding
             }
 
+            textContainer.containerSize = NSSize(
+                width: containerWidth,
+                height: CGFloat.greatestFiniteMagnitude
+            )
             textView.textContainerInset = NSSize(width: horizontalInset, height: verticalPadding)
         }
 
