@@ -8,13 +8,14 @@ struct ContentView: View {
     @AppStorage("fontSize") private var fontSize: Double = 16
     @AppStorage("lineSpacing") private var lineSpacing: Double = 6
     @AppStorage("lineLength") private var lineLength: Double = 65
+    @AppStorage("darkMode") private var darkMode: Bool = false
 
     var body: some View {
         ZStack(alignment: .leading) {
             // Main editor
-            MarkdownTextView(text: $document.text, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength)
+            MarkdownTextView(text: $document.text, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(NSColor.textBackgroundColor))
+                .background(darkMode ? Color.black : Color(NSColor.textBackgroundColor))
 
             // Sliding sidebar from left
             if showSidebar {
@@ -359,9 +360,23 @@ struct SettingsPanel: View {
     @AppStorage("fontSize") private var fontSize: Double = 16
     @AppStorage("lineSpacing") private var lineSpacing: Double = 6
     @AppStorage("lineLength") private var lineLength: Double = 65
+    @AppStorage("darkMode") private var darkMode: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // Dark mode toggle
+            HStack {
+                Text("Dark Mode")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Toggle("", isOn: $darkMode)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+
+            Divider()
+
             // Notes folder
             VStack(alignment: .leading, spacing: 6) {
                 Text("Notes Folder")
@@ -447,6 +462,7 @@ struct MarkdownTextView: NSViewRepresentable {
     var fontSize: Double
     var lineSpacing: Double
     var lineLength: Double
+    var darkMode: Bool
 
     // Calculate text width based on line length and font size
     // Average character width is approximately 0.55 * fontSize for system font
@@ -470,7 +486,6 @@ struct MarkdownTextView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
-        scrollView.backgroundColor = NSColor.textBackgroundColor
 
         // Configure text view for writing
         textView.isRichText = false
@@ -478,9 +493,14 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.isEditable = true
         textView.isSelectable = true
         textView.drawsBackground = true
-        textView.backgroundColor = NSColor.textBackgroundColor
-        textView.textColor = NSColor.textColor
-        textView.insertionPointColor = NSColor.textColor
+
+        // Apply dark mode colors
+        let backgroundColor = darkMode ? NSColor.black : NSColor.textBackgroundColor
+        let textColor = darkMode ? NSColor.white : NSColor.textColor
+        scrollView.backgroundColor = backgroundColor
+        textView.backgroundColor = backgroundColor
+        textView.textColor = textColor
+        textView.insertionPointColor = textColor
 
         // Typography for comfortable writing
         textView.font = NSFont.systemFont(ofSize: CGFloat(fontSize), weight: .regular)
@@ -561,6 +581,20 @@ struct MarkdownTextView: NSViewRepresentable {
             // Update all existing text with new line spacing
             if let textStorage = textView.textStorage, textStorage.length > 0 {
                 textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: textStorage.length))
+            }
+        }
+
+        // Update dark mode colors
+        let backgroundColor = darkMode ? NSColor.black : NSColor.textBackgroundColor
+        let textColor = darkMode ? NSColor.white : NSColor.textColor
+        if scrollView.backgroundColor != backgroundColor {
+            scrollView.backgroundColor = backgroundColor
+            textView.backgroundColor = backgroundColor
+            textView.textColor = textColor
+            textView.insertionPointColor = textColor
+            // Update all existing text with new color
+            if let textStorage = textView.textStorage, textStorage.length > 0 {
+                textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: textStorage.length))
             }
         }
 
@@ -675,11 +709,12 @@ struct MarkdownTextView: NSViewRepresentable {
             let fullRange = NSRange(location: 0, length: (string as NSString).length)
 
             let baseFontSize = CGFloat(parent.fontSize)
+            let textColor = parent.darkMode ? NSColor.white : NSColor.textColor
 
             // Reset to default style
             let defaultFont = NSFont.systemFont(ofSize: baseFontSize, weight: .regular)
             textView.textStorage?.addAttribute(.font, value: defaultFont, range: fullRange)
-            textView.textStorage?.addAttribute(.foregroundColor, value: NSColor.textColor, range: fullRange)
+            textView.textStorage?.addAttribute(.foregroundColor, value: textColor, range: fullRange)
 
             // Apply line spacing
             let paragraphStyle = NSMutableParagraphStyle()
