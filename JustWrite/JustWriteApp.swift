@@ -152,6 +152,7 @@ struct JustWriteApp: App {
         DocumentGroup(newDocument: JustWriteDocument()) { file in
             ContentView(document: file.$document)
         }
+        .defaultSize(width: 1000, height: 850)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Note") {

@@ -5,38 +5,39 @@ struct ContentView: View {
     @Binding var document: JustWriteDocument
     @State private var showSidebar = false
     @State private var showSettings = false
+    @AppStorage("fontSize") private var fontSize: Double = 16
+    @AppStorage("lineSpacing") private var lineSpacing: Double = 6
+    @AppStorage("lineLength") private var lineLength: Double = 65
 
     var body: some View {
         ZStack(alignment: .leading) {
             // Main editor
-            MarkdownTextView(text: $document.text)
+            MarkdownTextView(text: $document.text, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(NSColor.textBackgroundColor))
 
             // Sliding sidebar from left
             if showSidebar {
                 SidebarView(showSidebar: $showSidebar, showSettings: $showSettings)
-                    .transition(.move(edge: .leading))
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
         .overlay(alignment: .topLeading) {
-            // Sidebar toggle button (visible when sidebar is hidden)
+            // Sidebar toggle button with Liquid Glass (visible when sidebar is hidden)
             if !showSidebar {
-                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSidebar = true } }) {
+                Button(action: { withAnimation(.bouncy) { showSidebar = true } }) {
                     Image(systemName: "sidebar.left")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.primary.opacity(0.7))
-                        .frame(width: 32, height: 32)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(6)
-                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                        .foregroundStyle(.primary)
+                        .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.plain)
+                .glassEffect(.regular.interactive())
                 .padding(12)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(.bouncy) {
                 showSidebar.toggle()
             }
         }
@@ -100,7 +101,7 @@ struct SidebarView: View {
     @Binding var showSettings: Bool
     @StateObject private var notesManager = NotesManager()
 
-    private let sidebarWidth: CGFloat = 220
+    private let sidebarWidth: CGFloat = 240
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -108,22 +109,23 @@ struct SidebarView: View {
             HStack {
                 Text("Notes")
                     .font(.headline)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                 Spacer()
-                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSidebar = false } }) {
+                Button(action: { withAnimation(.bouncy) { showSidebar = false } }) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
             }
-            .padding()
-
-            Divider()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
 
             // Notes list
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
+                LazyVStack(alignment: .leading, spacing: 4) {
                     // Current document (if not in folder list)
                     if let currentURL = notesManager.currentDocumentURL,
                        !notesManager.notesInFolder.contains(currentURL) {
@@ -146,10 +148,10 @@ struct SidebarView: View {
                     // Empty state
                     if notesManager.notesInFolder.isEmpty && notesManager.currentDocumentURL == nil {
                         Text("No notes yet")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 12)
                     }
                 }
                 .padding(.vertical, 8)
@@ -163,29 +165,36 @@ struct SidebarView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            Divider()
-
-            // Gear button at bottom
-            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { showSettings.toggle() } }) {
-                HStack {
-                    Image(systemName: "gear")
-                        .font(.system(size: 14))
-                    Text("Settings")
-                        .font(.system(size: 13))
-                    Spacer()
-                    Image(systemName: showSettings ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+            // Gear button at bottom with Liquid Glass
+            GlassEffectContainer {
+                Button(action: { withAnimation(.bouncy) { showSettings.toggle() } }) {
+                    HStack {
+                        Image(systemName: "gear")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("Settings")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer()
+                        Image(systemName: showSettings ? "chevron.down" : "chevron.up")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
                 }
-                .foregroundColor(.primary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
         }
         .frame(width: sidebarWidth)
         .frame(maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background {
+            // Liquid Glass sidebar background
+            Rectangle()
+                .fill(.ultraThinMaterial)
+        }
         .onAppear {
             notesManager.refresh()
         }
@@ -208,20 +217,24 @@ struct NoteRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 12))
-                    .foregroundColor(isSelected ? .accentColor : .secondary)
-                Text(name.isEmpty ? "Untitled" : name)
+            HStack(spacing: 10) {
+                Image(systemName: "doc.text.fill")
                     .font(.system(size: 13))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(isSelected ? .white : .secondary)
+                Text(name.isEmpty ? "Untitled" : name)
+                    .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                    .foregroundStyle(isSelected ? .white : .primary)
                     .lineLimit(1)
                 Spacer()
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-            .cornerRadius(4)
+            .padding(.vertical, 8)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.accentColor)
+                }
+            }
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 8)
@@ -345,24 +358,28 @@ struct SettingsPanel: View {
     @ObservedObject var notesManager: NotesManager
     @AppStorage("fontSize") private var fontSize: Double = 16
     @AppStorage("lineSpacing") private var lineSpacing: Double = 6
+    @AppStorage("lineLength") private var lineLength: Double = 65
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Notes folder
             VStack(alignment: .leading, spacing: 6) {
                 Text("Notes Folder")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
                 HStack {
                     Text(notesManager.notesFolder?.lastPathComponent ?? "Not set")
                         .font(.system(size: 12))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer()
                     Button("Change") {
                         notesManager.changeNotesFolder()
                     }
-                    .font(.system(size: 11))
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
             }
 
@@ -371,13 +388,14 @@ struct SettingsPanel: View {
             // Font size
             VStack(alignment: .leading, spacing: 6) {
                 Text("Font Size")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
                 HStack {
                     Slider(value: $fontSize, in: 12...24, step: 1)
+                        .tint(.accentColor)
                     Text("\(Int(fontSize))")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .frame(width: 24)
                 }
             }
@@ -385,18 +403,40 @@ struct SettingsPanel: View {
             // Line spacing
             VStack(alignment: .leading, spacing: 6) {
                 Text("Line Spacing")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
                 HStack {
                     Slider(value: $lineSpacing, in: 0...16, step: 1)
+                        .tint(.accentColor)
                     Text("\(Int(lineSpacing))")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24)
+                }
+            }
+
+            // Line length
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Line Length")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Slider(value: $lineLength, in: 40...80, step: 1)
+                        .tint(.accentColor)
+                    Text("\(Int(lineLength))")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
                         .frame(width: 24)
                 }
             }
         }
-        .padding()
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 }
 
@@ -404,9 +444,15 @@ struct SettingsPanel: View {
 
 struct MarkdownTextView: NSViewRepresentable {
     @Binding var text: String
+    var fontSize: Double
+    var lineSpacing: Double
+    var lineLength: Double
 
-    // Optimal line length: ~65 characters at 16px
-    private let optimalTextWidth: CGFloat = 550
+    // Calculate text width based on line length and font size
+    // Average character width is approximately 0.55 * fontSize for system font
+    private var optimalTextWidth: CGFloat {
+        CGFloat(lineLength) * CGFloat(fontSize) * 0.55
+    }
     private let verticalPadding: CGFloat = 40
     private let minimumHorizontalPadding: CGFloat = 40
 
@@ -437,9 +483,9 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.insertionPointColor = NSColor.textColor
 
         // Typography for comfortable writing
-        textView.font = NSFont.systemFont(ofSize: 16, weight: .regular)
+        textView.font = NSFont.systemFont(ofSize: CGFloat(fontSize), weight: .regular)
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = 6
+        paragraphStyle.lineSpacing = CGFloat(lineSpacing)
         textView.defaultParagraphStyle = paragraphStyle
 
         // Text container setup - don't track text view width so we can center manually
@@ -460,7 +506,6 @@ struct MarkdownTextView: NSViewRepresentable {
         // Set delegate
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
-        context.coordinator.optimalTextWidth = optimalTextWidth
         context.coordinator.verticalPadding = verticalPadding
         context.coordinator.minimumHorizontalPadding = minimumHorizontalPadding
 
@@ -488,11 +533,35 @@ struct MarkdownTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
+        // Update coordinator's parent reference so it has current values
+        context.coordinator.parent = self
+
         // Only update if text changed externally
         if textView.string != text {
             let selectedRanges = textView.selectedRanges
             textView.string = text
             textView.selectedRanges = selectedRanges
+        }
+
+        // Update font size
+        let newFont = NSFont.systemFont(ofSize: CGFloat(fontSize), weight: .regular)
+        if textView.font?.pointSize != CGFloat(fontSize) {
+            textView.font = newFont
+            // Update all existing text with new font
+            if let textStorage = textView.textStorage, textStorage.length > 0 {
+                textStorage.addAttribute(.font, value: newFont, range: NSRange(location: 0, length: textStorage.length))
+            }
+        }
+
+        // Update line spacing
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = CGFloat(lineSpacing)
+        if textView.defaultParagraphStyle?.lineSpacing != CGFloat(lineSpacing) {
+            textView.defaultParagraphStyle = paragraphStyle
+            // Update all existing text with new line spacing
+            if let textStorage = textView.textStorage, textStorage.length > 0 {
+                textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: textStorage.length))
+            }
         }
 
         // Update centering
@@ -504,9 +573,12 @@ struct MarkdownTextView: NSViewRepresentable {
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MarkdownTextView
         weak var textView: NSTextView?
-        var optimalTextWidth: CGFloat = 550
         var verticalPadding: CGFloat = 40
         var minimumHorizontalPadding: CGFloat = 40
+
+        var optimalTextWidth: CGFloat {
+            parent.optimalTextWidth
+        }
 
         init(_ parent: MarkdownTextView) {
             self.parent = parent
@@ -602,18 +674,25 @@ struct MarkdownTextView: NSViewRepresentable {
             let string = textView.string
             let fullRange = NSRange(location: 0, length: (string as NSString).length)
 
+            let baseFontSize = CGFloat(parent.fontSize)
+
             // Reset to default style
-            let defaultFont = NSFont.systemFont(ofSize: 16, weight: .regular)
+            let defaultFont = NSFont.systemFont(ofSize: baseFontSize, weight: .regular)
             textView.textStorage?.addAttribute(.font, value: defaultFont, range: fullRange)
             textView.textStorage?.addAttribute(.foregroundColor, value: NSColor.textColor, range: fullRange)
 
-            // Headings
-            highlightPattern(#"^# .+$"#, in: textView, font: .systemFont(ofSize: 24, weight: .bold))
-            highlightPattern(#"^## .+$"#, in: textView, font: .systemFont(ofSize: 20, weight: .bold))
-            highlightPattern(#"^### .+$"#, in: textView, font: .systemFont(ofSize: 18, weight: .semibold))
+            // Apply line spacing
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.lineSpacing = CGFloat(parent.lineSpacing)
+            textView.textStorage?.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+
+            // Headings (scale relative to base font size)
+            highlightPattern(#"^# .+$"#, in: textView, font: .systemFont(ofSize: baseFontSize * 1.5, weight: .bold))
+            highlightPattern(#"^## .+$"#, in: textView, font: .systemFont(ofSize: baseFontSize * 1.25, weight: .bold))
+            highlightPattern(#"^### .+$"#, in: textView, font: .systemFont(ofSize: baseFontSize * 1.125, weight: .semibold))
 
             // Bold
-            highlightPattern(#"\*\*[^*]+\*\*"#, in: textView, font: .systemFont(ofSize: 16, weight: .bold))
+            highlightPattern(#"\*\*[^*]+\*\*"#, in: textView, font: .systemFont(ofSize: baseFontSize, weight: .bold))
 
             // Italic
             let italicFont = NSFontManager.shared.convert(defaultFont, toHaveTrait: .italicFontMask)
