@@ -18,6 +18,11 @@ struct ContentView: View {
 struct MarkdownTextView: NSViewRepresentable {
     @Binding var text: String
 
+    // Optimal line length: ~65 characters at 16px
+    private let optimalTextWidth: CGFloat = 550
+    private let verticalPadding: CGFloat = 40
+    private let minimumHorizontalPadding: CGFloat = 40
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -50,11 +55,10 @@ struct MarkdownTextView: NSViewRepresentable {
         paragraphStyle.lineSpacing = 6
         textView.defaultParagraphStyle = paragraphStyle
 
-        // Generous margins for focused writing
-        textView.textContainerInset = NSSize(width: 60, height: 40)
+        // Text container setup
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(
-            width: CGFloat.greatestFiniteMagnitude,
+            width: 0,
             height: CGFloat.greatestFiniteMagnitude
         )
 
@@ -63,19 +67,32 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
 
+        // Set document view
+        scrollView.documentView = textView
+
         // Set delegate
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
+        context.coordinator.optimalTextWidth = optimalTextWidth
+        context.coordinator.verticalPadding = verticalPadding
+        context.coordinator.minimumHorizontalPadding = minimumHorizontalPadding
 
         // Set initial text
         textView.string = text
 
-        // Configure scroll view document
-        scrollView.documentView = textView
+        // Observe frame changes to update centering
+        scrollView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.frameDidChange(_:)),
+            name: NSView.frameDidChangeNotification,
+            object: scrollView
+        )
 
-        // Register for first responder to handle formatting commands
+        // Register for first responder
         DispatchQueue.main.async {
             textView.window?.makeFirstResponder(textView)
+            context.coordinator.updateTextInsets()
         }
 
         return scrollView
@@ -90,6 +107,9 @@ struct MarkdownTextView: NSViewRepresentable {
             textView.string = text
             textView.selectedRanges = selectedRanges
         }
+
+        // Update centering
+        context.coordinator.updateTextInsets()
     }
 
     // MARK: - Coordinator
@@ -97,9 +117,34 @@ struct MarkdownTextView: NSViewRepresentable {
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MarkdownTextView
         weak var textView: NSTextView?
+        var optimalTextWidth: CGFloat = 550
+        var verticalPadding: CGFloat = 40
+        var minimumHorizontalPadding: CGFloat = 40
 
         init(_ parent: MarkdownTextView) {
             self.parent = parent
+        }
+
+        @objc func frameDidChange(_ notification: Notification) {
+            updateTextInsets()
+        }
+
+        func updateTextInsets() {
+            guard let textView = textView,
+                  let scrollView = textView.enclosingScrollView else { return }
+
+            let availableWidth = scrollView.frame.width
+            let horizontalInset: CGFloat
+
+            if availableWidth > optimalTextWidth + (minimumHorizontalPadding * 2) {
+                // Center the text by calculating equal margins
+                horizontalInset = (availableWidth - optimalTextWidth) / 2
+            } else {
+                // Use minimum padding when window is narrow
+                horizontalInset = minimumHorizontalPadding
+            }
+
+            textView.textContainerInset = NSSize(width: horizontalInset, height: verticalPadding)
         }
 
         func textDidChange(_ notification: Notification) {
