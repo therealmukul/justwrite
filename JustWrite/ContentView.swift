@@ -3,13 +3,227 @@ import AppKit
 
 struct ContentView: View {
     @Binding var document: JustWriteDocument
-    @State private var isDistractionFree = false
-    @FocusState private var isFocused: Bool
+    @State private var showSidebar = false
+    @State private var showSettings = false
 
     var body: some View {
-        MarkdownTextView(text: $document.text)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(NSColor.textBackgroundColor))
+        ZStack(alignment: .leading) {
+            // Main editor
+            MarkdownTextView(text: $document.text)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(NSColor.textBackgroundColor))
+
+            // Sliding sidebar from left
+            if showSidebar {
+                SidebarView(showSidebar: $showSidebar, showSettings: $showSettings)
+                    .transition(.move(edge: .leading))
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            // Sidebar toggle button (visible when sidebar is hidden)
+            if !showSidebar {
+                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSidebar = true } }) {
+                    Image(systemName: "sidebar.left")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(Color(NSColor.windowBackgroundColor).opacity(0.9))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showSidebar.toggle()
+            }
+        }
+    }
+}
+
+// MARK: - Sidebar View
+
+struct SidebarView: View {
+    @Binding var showSidebar: Bool
+    @Binding var showSettings: Bool
+    @StateObject private var notesManager = NotesManager()
+
+    private let sidebarWidth: CGFloat = 220
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header with close button
+            HStack {
+                Text("Notes")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Spacer()
+                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showSidebar = false } }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+
+            Divider()
+
+            // Notes list
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    // Current document
+                    if let currentURL = notesManager.currentDocumentURL {
+                        NoteRow(
+                            name: currentURL.deletingPathExtension().lastPathComponent,
+                            isSelected: true,
+                            action: {}
+                        )
+                    }
+
+                    // Other recent documents
+                    ForEach(notesManager.recentDocuments, id: \.self) { url in
+                        if url != notesManager.currentDocumentURL {
+                            NoteRow(
+                                name: url.deletingPathExtension().lastPathComponent,
+                                isSelected: false,
+                                action: { notesManager.openDocument(at: url) }
+                            )
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+
+            Spacer()
+
+            // Settings section
+            if showSettings {
+                SettingsPanel()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            Divider()
+
+            // Gear button at bottom
+            Button(action: { withAnimation(.easeInOut(duration: 0.15)) { showSettings.toggle() } }) {
+                HStack {
+                    Image(systemName: "gear")
+                        .font(.system(size: 14))
+                    Text("Settings")
+                        .font(.system(size: 13))
+                    Spacer()
+                    Image(systemName: showSettings ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .foregroundColor(.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(width: sidebarWidth)
+        .frame(maxHeight: .infinity)
+        .background(Color(NSColor.windowBackgroundColor))
+        .onAppear {
+            notesManager.refresh()
+        }
+    }
+}
+
+// MARK: - Note Row
+
+struct NoteRow: View {
+    let name: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 12))
+                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                Text(name.isEmpty ? "Untitled" : name)
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+            .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+    }
+}
+
+// MARK: - Notes Manager
+
+class NotesManager: ObservableObject {
+    @Published var recentDocuments: [URL] = []
+    @Published var currentDocumentURL: URL?
+
+    init() {
+        refresh()
+    }
+
+    func refresh() {
+        // Get current document URL
+        if let currentDoc = NSDocumentController.shared.currentDocument {
+            currentDocumentURL = currentDoc.fileURL
+        }
+
+        // Get recent documents
+        recentDocuments = NSDocumentController.shared.recentDocumentURLs
+    }
+
+    func openDocument(at url: URL) {
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+    }
+}
+
+// MARK: - Settings Panel
+
+struct SettingsPanel: View {
+    @AppStorage("fontSize") private var fontSize: Double = 16
+    @AppStorage("lineSpacing") private var lineSpacing: Double = 6
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Font size
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Font Size")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                HStack {
+                    Slider(value: $fontSize, in: 12...24, step: 1)
+                    Text("\(Int(fontSize))")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 24)
+                }
+            }
+
+            // Line spacing
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Line Spacing")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                HStack {
+                    Slider(value: $lineSpacing, in: 0...16, step: 1)
+                    Text("\(Int(lineSpacing))")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 24)
+                }
+            }
+        }
+        .padding()
     }
 }
 
