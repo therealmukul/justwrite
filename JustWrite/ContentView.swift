@@ -73,8 +73,9 @@ struct SidebarView: View {
             // Notes list
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    // Current document
-                    if let currentURL = notesManager.currentDocumentURL {
+                    // Current document (if not in folder list)
+                    if let currentURL = notesManager.currentDocumentURL,
+                       !notesManager.notesInFolder.contains(currentURL) {
                         NoteRow(
                             name: currentURL.deletingPathExtension().lastPathComponent,
                             isSelected: true,
@@ -82,15 +83,22 @@ struct SidebarView: View {
                         )
                     }
 
-                    // Other recent documents
-                    ForEach(notesManager.recentDocuments, id: \.self) { url in
-                        if url != notesManager.currentDocumentURL {
-                            NoteRow(
-                                name: url.deletingPathExtension().lastPathComponent,
-                                isSelected: false,
-                                action: { notesManager.openDocument(at: url) }
-                            )
-                        }
+                    // Notes from folder
+                    ForEach(notesManager.notesInFolder, id: \.self) { url in
+                        NoteRow(
+                            name: url.deletingPathExtension().lastPathComponent,
+                            isSelected: url == notesManager.currentDocumentURL,
+                            action: { notesManager.openDocument(at: url) }
+                        )
+                    }
+
+                    // Empty state
+                    if notesManager.notesInFolder.isEmpty && notesManager.currentDocumentURL == nil {
+                        Text("No notes yet")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                     }
                 }
                 .padding(.vertical, 8)
@@ -100,7 +108,7 @@ struct SidebarView: View {
 
             // Settings section
             if showSettings {
-                SettingsPanel()
+                SettingsPanel(notesManager: notesManager)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -165,11 +173,29 @@ struct NoteRow: View {
 // MARK: - Notes Manager
 
 class NotesManager: ObservableObject {
-    @Published var recentDocuments: [URL] = []
+    @Published var notesInFolder: [URL] = []
     @Published var currentDocumentURL: URL?
+    @Published var notesFolder: URL?
+
+    private var folderObserver: Any?
 
     init() {
         refresh()
+
+        // Listen for folder changes
+        folderObserver = NotificationCenter.default.addObserver(
+            forName: .notesFolderChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refresh()
+        }
+    }
+
+    deinit {
+        if let observer = folderObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     func refresh() {
@@ -178,23 +204,99 @@ class NotesManager: ObservableObject {
             currentDocumentURL = currentDoc.fileURL
         }
 
-        // Get recent documents
-        recentDocuments = NSDocumentController.shared.recentDocumentURLs
+        // Get notes folder from UserDefaults
+        if let bookmarkData = UserDefaults.standard.data(forKey: "notesFolder") {
+            var isStale = false
+            if let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, bookmarkDataIsStale: &isStale) {
+                notesFolder = url
+                _ = url.startAccessingSecurityScopedResource()
+                loadNotesFromFolder(url)
+            }
+        }
+    }
+
+    private func loadNotesFromFolder(_ folder: URL) {
+        let fileManager = FileManager.default
+        do {
+            let contents = try fileManager.contentsOfDirectory(
+                at: folder,
+                includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+
+            // Filter for text files and sort by modification date (newest first)
+            notesInFolder = contents
+                .filter { url in
+                    let ext = url.pathExtension.lowercased()
+                    return ext == "txt" || ext == "md" || ext == "markdown" || ext.isEmpty
+                }
+                .sorted { url1, url2 in
+                    let date1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date.distantPast
+                    let date2 = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date.distantPast
+                    return date1 > date2
+                }
+        } catch {
+            notesInFolder = []
+        }
     }
 
     func openDocument(at url: URL) {
-        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { doc, _, _ in
+            if let doc = doc {
+                UserDefaults.standard.set(url.path, forKey: "lastOpenedDocument")
+            }
+        }
+    }
+
+    func changeNotesFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Notes Folder"
+        panel.message = "Select a folder for your notes"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+
+        if panel.runModal() == .OK, let url = panel.url {
+            _ = url.startAccessingSecurityScopedResource()
+            let bookmarkData = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            UserDefaults.standard.set(bookmarkData, forKey: "notesFolder")
+            notesFolder = url
+            NotificationCenter.default.post(name: .notesFolderChanged, object: url)
+            loadNotesFromFolder(url)
+        }
     }
 }
 
 // MARK: - Settings Panel
 
 struct SettingsPanel: View {
+    @ObservedObject var notesManager: NotesManager
     @AppStorage("fontSize") private var fontSize: Double = 16
     @AppStorage("lineSpacing") private var lineSpacing: Double = 6
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // Notes folder
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Notes Folder")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                HStack {
+                    Text(notesManager.notesFolder?.lastPathComponent ?? "Not set")
+                        .font(.system(size: 12))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button("Change") {
+                        notesManager.changeNotesFolder()
+                    }
+                    .font(.system(size: 11))
+                }
+            }
+
+            Divider()
+
             // Font size
             VStack(alignment: .leading, spacing: 6) {
                 Text("Font Size")
