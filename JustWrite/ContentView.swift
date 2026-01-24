@@ -1,6 +1,18 @@
 import SwiftUI
 import AppKit
 
+// Custom accent colors
+extension Color {
+    // Light mode: #800020 (deep burgundy)
+    static let appAccentLight = Color(red: 0x80 / 255.0, green: 0x00 / 255.0, blue: 0x20 / 255.0)
+    // Dark mode: #C94C66 (rose-burgundy)
+    static let appAccentDark = Color(red: 0xC9 / 255.0, green: 0x4C / 255.0, blue: 0x66 / 255.0)
+
+    static func appAccent(darkMode: Bool) -> Color {
+        darkMode ? .appAccentDark : .appAccentLight
+    }
+}
+
 struct ContentView: View {
     @Binding var document: JustWriteDocument
     @State private var showSidebar = false
@@ -9,11 +21,12 @@ struct ContentView: View {
     @AppStorage("lineSpacing") private var lineSpacing: Double = 6
     @AppStorage("lineLength") private var lineLength: Double = 65
     @AppStorage("darkMode") private var darkMode: Bool = false
+    @AppStorage("fontFamily") private var fontFamily: String = "EB Garamond"
 
     var body: some View {
         ZStack(alignment: .leading) {
             // Main editor
-            MarkdownTextView(text: $document.text, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode)
+            MarkdownTextView(text: $document.text, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode, fontFamily: fontFamily)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(darkMode ? Color.black : Color(NSColor.textBackgroundColor))
 
@@ -49,6 +62,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .newNoteRequest)) { _ in
             createNewNote()
         }
+        .preferredColorScheme(.light)
     }
 
     private func createNewNote() {
@@ -101,6 +115,7 @@ struct SidebarView: View {
     @Binding var showSidebar: Bool
     @Binding var showSettings: Bool
     @StateObject private var notesManager = NotesManager()
+    @AppStorage("darkMode") private var darkMode: Bool = false
 
     private let sidebarWidth: CGFloat = 240
 
@@ -133,6 +148,7 @@ struct SidebarView: View {
                         NoteRow(
                             name: currentURL.deletingPathExtension().lastPathComponent,
                             isSelected: true,
+                            darkMode: darkMode,
                             action: {}
                         )
                     }
@@ -142,6 +158,7 @@ struct SidebarView: View {
                         NoteRow(
                             name: url.deletingPathExtension().lastPathComponent,
                             isSelected: url == notesManager.currentDocumentURL,
+                            darkMode: darkMode,
                             action: { notesManager.openDocument(at: url) }
                         )
                     }
@@ -192,10 +209,13 @@ struct SidebarView: View {
         .frame(width: sidebarWidth)
         .frame(maxHeight: .infinity)
         .background {
-            // Liquid Glass sidebar background
-            Rectangle()
+            // Liquid Glass sidebar background with rounded corners
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.vertical, 8)
+        .padding(.leading, 8)
         .onAppear {
             notesManager.refresh()
         }
@@ -214,6 +234,7 @@ struct SidebarView: View {
 struct NoteRow: View {
     let name: String
     let isSelected: Bool
+    let darkMode: Bool
     let action: () -> Void
 
     var body: some View {
@@ -233,7 +254,7 @@ struct NoteRow: View {
             .background {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.accentColor)
+                        .fill(Color.appAccent(darkMode: darkMode))
                 }
             }
         }
@@ -361,6 +382,23 @@ struct SettingsPanel: View {
     @AppStorage("lineSpacing") private var lineSpacing: Double = 6
     @AppStorage("lineLength") private var lineLength: Double = 65
     @AppStorage("darkMode") private var darkMode: Bool = false
+    @AppStorage("fontFamily") private var fontFamily: String = "EB Garamond"
+
+    private let availableFonts = [
+        "EB Garamond",
+        "System",
+        "Helvetica Neue",
+        "Arial",
+        "Avenir",
+        "SF Pro",
+        "New York",
+        "Georgia",
+        "Times New Roman",
+        "Palatino",
+        "Charter",
+        "Courier New",
+        "Menlo"
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -373,6 +411,22 @@ struct SettingsPanel: View {
                 Toggle("", isOn: $darkMode)
                     .toggleStyle(.switch)
                     .labelsHidden()
+            }
+
+            Divider()
+
+            // Font family
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Font")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Picker("", selection: $fontFamily) {
+                    ForEach(availableFonts, id: \.self) { font in
+                        Text(font).tag(font)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
             }
 
             Divider()
@@ -407,7 +461,7 @@ struct SettingsPanel: View {
                     .foregroundStyle(.secondary)
                 HStack {
                     Slider(value: $fontSize, in: 12...24, step: 1)
-                        .tint(.accentColor)
+                        .tint(Color.appAccent(darkMode: darkMode))
                     Text("\(Int(fontSize))")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -422,7 +476,7 @@ struct SettingsPanel: View {
                     .foregroundStyle(.secondary)
                 HStack {
                     Slider(value: $lineSpacing, in: 0...16, step: 1)
-                        .tint(.accentColor)
+                        .tint(Color.appAccent(darkMode: darkMode))
                     Text("\(Int(lineSpacing))")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -437,7 +491,7 @@ struct SettingsPanel: View {
                     .foregroundStyle(.secondary)
                 HStack {
                     Slider(value: $lineLength, in: 40...80, step: 1)
-                        .tint(.accentColor)
+                        .tint(Color.appAccent(darkMode: darkMode))
                     Text("\(Int(lineLength))")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -455,6 +509,197 @@ struct SettingsPanel: View {
     }
 }
 
+// MARK: - Smooth Cursor Text View
+
+class SmoothCursorTextView: NSTextView {
+    private var cursorView: NSView?
+    private var cursorBlinkTimer: Timer?
+    private var isCursorVisible = true
+
+    func setupSmoothCursor(color: NSColor) {
+        // Create cursor view
+        let cursor = NSView()
+        cursor.wantsLayer = true
+        cursor.layer?.backgroundColor = color.cgColor
+        cursor.layer?.cornerRadius = 1
+        addSubview(cursor)
+        cursorView = cursor
+
+        // Start blink timer
+        startBlinkTimer()
+
+        // Initial position
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: false)
+        }
+    }
+
+    private func startBlinkTimer() {
+        cursorBlinkTimer?.invalidate()
+        isCursorVisible = true
+        cursorView?.alphaValue = 1
+
+        cursorBlinkTimer = Timer.scheduledTimer(withTimeInterval: 0.53, repeats: true) { [weak self] _ in
+            guard let self = self, self.window?.firstResponder == self else { return }
+            self.isCursorVisible.toggle()
+
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.08
+                self.cursorView?.animator().alphaValue = self.isCursorVisible ? 1 : 0
+            }
+        }
+    }
+
+    private func resetBlink() {
+        isCursorVisible = true
+        cursorView?.alphaValue = 1
+        startBlinkTimer()
+    }
+
+    func updateCursorColor(_ color: NSColor) {
+        cursorView?.layer?.backgroundColor = color.cgColor
+        insertionPointColor = color
+    }
+
+    func updateCursorPosition(animated: Bool = true) {
+        guard let cursorView = cursorView else { return }
+
+        // Hide cursor if there's a selection
+        if selectedRange().length > 0 {
+            cursorView.isHidden = true
+            return
+        }
+
+        cursorView.isHidden = false
+
+        guard let layoutManager = layoutManager,
+              let textContainer = textContainer else { return }
+
+        let insertionPoint = selectedRange().location
+
+        // Calculate cursor height based on font metrics
+        let cursorHeight: CGFloat
+        if let font = font {
+            cursorHeight = font.ascender + abs(font.descender)
+        } else {
+            cursorHeight = 16
+        }
+
+        // Get cursor rect
+        var cursorRect: NSRect
+
+        if layoutManager.numberOfGlyphs == 0 || string.isEmpty {
+            // Empty document - position at start
+            cursorRect = NSRect(x: textContainerInset.width, y: textContainerInset.height, width: 2, height: cursorHeight)
+        } else {
+            // Get the insertion point rect from the layout manager
+            let glyphIndex: Int
+            if insertionPoint >= layoutManager.numberOfGlyphs {
+                glyphIndex = max(0, layoutManager.numberOfGlyphs - 1)
+            } else {
+                glyphIndex = layoutManager.glyphIndexForCharacter(at: insertionPoint)
+            }
+
+            // Get the baseline location for this glyph
+            let lineFragmentRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+            let glyphLocation = layoutManager.location(forGlyphAt: glyphIndex)
+
+            // Baseline Y = lineFragmentRect.minY + glyphLocation.y
+            // Cursor should go from (baseline - descender) to (baseline + ascender)
+            // In flipped coords: top of cursor = baseline - ascender
+            let baselineY = lineFragmentRect.minY + glyphLocation.y
+            let cursorY = baselineY - (font?.ascender ?? cursorHeight)
+
+            if insertionPoint >= string.count && !string.isEmpty {
+                // At end of text - position after last character
+                let lastCharIndex = max(0, layoutManager.numberOfGlyphs - 1)
+                let glyphRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: lastCharIndex, length: 1), in: textContainer)
+                cursorRect = NSRect(
+                    x: glyphRect.maxX + textContainerInset.width,
+                    y: cursorY + textContainerInset.height,
+                    width: 2,
+                    height: cursorHeight
+                )
+            } else {
+                // Normal position - at start of current glyph
+                let glyphRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyphIndex, length: 1), in: textContainer)
+                cursorRect = NSRect(
+                    x: glyphRect.minX + textContainerInset.width,
+                    y: cursorY + textContainerInset.height,
+                    width: 2,
+                    height: cursorHeight
+                )
+            }
+        }
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.08
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                cursorView.animator().frame = cursorRect
+            }
+        } else {
+            cursorView.frame = cursorRect
+        }
+    }
+
+    // Override to hide default cursor
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        // Don't draw - we use our custom cursor
+    }
+
+    override var selectedRanges: [NSValue] {
+        didSet {
+            updateCursorPosition(animated: true)
+            resetBlink()
+        }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        super.keyDown(with: event)
+        updateCursorPosition(animated: true)
+        resetBlink()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        updateCursorPosition(animated: true)
+        resetBlink()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        updateCursorPosition(animated: true)
+        resetBlink()
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result {
+            cursorView?.isHidden = false
+            updateCursorPosition(animated: false)
+            startBlinkTimer()
+        }
+        return result
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        cursorBlinkTimer?.invalidate()
+        cursorView?.isHidden = true
+        return result
+    }
+
+    override func layout() {
+        super.layout()
+        updateCursorPosition(animated: false)
+    }
+
+    deinit {
+        cursorBlinkTimer?.invalidate()
+    }
+}
+
 // MARK: - Markdown Text View (NSViewRepresentable)
 
 struct MarkdownTextView: NSViewRepresentable {
@@ -463,6 +708,44 @@ struct MarkdownTextView: NSViewRepresentable {
     var lineSpacing: Double
     var lineLength: Double
     var darkMode: Bool
+    var fontFamily: String
+
+    // Helper to get the appropriate font
+    private func getFont(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        if fontFamily == "System" || fontFamily == "SF Pro" {
+            return NSFont.systemFont(ofSize: size, weight: weight)
+        } else if fontFamily == "New York" {
+            // New York is a serif system font
+            if let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body).withDesign(.serif) {
+                return NSFont(descriptor: descriptor, size: size) ?? NSFont.systemFont(ofSize: size, weight: weight)
+            }
+            return NSFont.systemFont(ofSize: size, weight: weight)
+        } else if fontFamily == "EB Garamond" {
+            // EB Garamond bundled font - variable font
+            if let font = NSFont(name: "EBGaramond", size: size) {
+                return font
+            }
+            // Try alternate names
+            if let font = NSFont(name: "EB Garamond", size: size) {
+                return font
+            }
+            if let font = NSFont(name: "EBGaramond-Regular", size: size) {
+                return font
+            }
+            // Fallback to system serif
+            if let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body).withDesign(.serif) {
+                return NSFont(descriptor: descriptor, size: size) ?? NSFont.systemFont(ofSize: size, weight: weight)
+            }
+            return NSFont.systemFont(ofSize: size, weight: weight)
+        } else {
+            // Try to get the font by name
+            if let font = NSFont(name: fontFamily, size: size) {
+                return font
+            }
+            // Fallback to system font
+            return NSFont.systemFont(ofSize: size, weight: weight)
+        }
+    }
 
     // Calculate text width based on line length and font size
     // Average character width is approximately 0.55 * fontSize for system font
@@ -478,7 +761,7 @@ struct MarkdownTextView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
-        let textView = NSTextView()
+        let textView = SmoothCursorTextView()
 
         // Configure scroll view
         scrollView.hasVerticalScroller = true
@@ -503,7 +786,7 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.insertionPointColor = textColor
 
         // Typography for comfortable writing
-        textView.font = NSFont.systemFont(ofSize: CGFloat(fontSize), weight: .regular)
+        textView.font = getFont(size: CGFloat(fontSize))
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = CGFloat(lineSpacing)
         textView.defaultParagraphStyle = paragraphStyle
@@ -532,6 +815,9 @@ struct MarkdownTextView: NSViewRepresentable {
         // Set initial text
         textView.string = text
 
+        // Setup smooth cursor after view is configured
+        textView.setupSmoothCursor(color: textColor)
+
         // Observe frame changes to update centering
         scrollView.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(
@@ -551,7 +837,7 @@ struct MarkdownTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+        guard let textView = scrollView.documentView as? SmoothCursorTextView else { return }
 
         // Update coordinator's parent reference so it has current values
         context.coordinator.parent = self
@@ -563,9 +849,11 @@ struct MarkdownTextView: NSViewRepresentable {
             textView.selectedRanges = selectedRanges
         }
 
-        // Update font size
-        let newFont = NSFont.systemFont(ofSize: CGFloat(fontSize), weight: .regular)
-        if textView.font?.pointSize != CGFloat(fontSize) {
+        // Update font (size or family)
+        let newFont = getFont(size: CGFloat(fontSize))
+        let currentFontName = textView.font?.fontName ?? ""
+        let newFontName = newFont.fontName
+        if textView.font?.pointSize != CGFloat(fontSize) || currentFontName != newFontName {
             textView.font = newFont
             // Update all existing text with new font
             if let textStorage = textView.textStorage, textStorage.length > 0 {
@@ -587,11 +875,14 @@ struct MarkdownTextView: NSViewRepresentable {
         // Update dark mode colors
         let backgroundColor = darkMode ? NSColor.black : NSColor.textBackgroundColor
         let textColor = darkMode ? NSColor.white : NSColor.textColor
+
+        // Always update cursor color to ensure it's correct
+        textView.updateCursorColor(textColor)
+
         if scrollView.backgroundColor != backgroundColor {
             scrollView.backgroundColor = backgroundColor
             textView.backgroundColor = backgroundColor
             textView.textColor = textColor
-            textView.insertionPointColor = textColor
             // Update all existing text with new color
             if let textStorage = textView.textStorage, textStorage.length > 0 {
                 textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: textStorage.length))
@@ -616,6 +907,98 @@ struct MarkdownTextView: NSViewRepresentable {
 
         init(_ parent: MarkdownTextView) {
             self.parent = parent
+        }
+
+        private func getFont(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+            let fontFamily = parent.fontFamily
+            if fontFamily == "System" || fontFamily == "SF Pro" {
+                return NSFont.systemFont(ofSize: size, weight: weight)
+            } else if fontFamily == "New York" {
+                if let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body).withDesign(.serif) {
+                    return NSFont(descriptor: descriptor, size: size) ?? NSFont.systemFont(ofSize: size, weight: weight)
+                }
+                return NSFont.systemFont(ofSize: size, weight: weight)
+            } else if fontFamily == "EB Garamond" {
+                // Try various EB Garamond font names
+                for name in ["EBGaramond", "EB Garamond", "EBGaramond-Regular"] {
+                    if let font = NSFont(name: name, size: size) {
+                        return font
+                    }
+                }
+                // Fallback to system serif
+                if let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body).withDesign(.serif) {
+                    return NSFont(descriptor: descriptor, size: size) ?? NSFont.systemFont(ofSize: size, weight: weight)
+                }
+                return NSFont.systemFont(ofSize: size, weight: weight)
+            } else {
+                if let font = NSFont(name: fontFamily, size: size) {
+                    return font
+                }
+                return NSFont.systemFont(ofSize: size, weight: weight)
+            }
+        }
+
+        private func getBoldFont(size: CGFloat) -> NSFont {
+            let fontFamily = parent.fontFamily
+            if fontFamily == "System" || fontFamily == "SF Pro" {
+                return NSFont.systemFont(ofSize: size, weight: .bold)
+            } else if fontFamily == "New York" {
+                if let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body).withDesign(.serif)?.withSymbolicTraits(.bold) {
+                    return NSFont(descriptor: descriptor, size: size) ?? NSFont.systemFont(ofSize: size, weight: .bold)
+                }
+                return NSFont.systemFont(ofSize: size, weight: .bold)
+            } else if fontFamily == "EB Garamond" {
+                // EB Garamond is a variable font, use font manager for bold
+                for name in ["EBGaramond", "EB Garamond", "EBGaramond-Regular"] {
+                    if let baseFont = NSFont(name: name, size: size) {
+                        return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+                    }
+                }
+                return NSFont.systemFont(ofSize: size, weight: .bold)
+            } else {
+                // Try bold variant
+                let boldName = fontFamily + "-Bold"
+                if let font = NSFont(name: boldName, size: size) {
+                    return font
+                }
+                // Try using font manager to get bold
+                if let baseFont = NSFont(name: fontFamily, size: size) {
+                    return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+                }
+                return NSFont.systemFont(ofSize: size, weight: .bold)
+            }
+        }
+
+        private func getItalicFont(size: CGFloat) -> NSFont {
+            let fontFamily = parent.fontFamily
+            if fontFamily == "System" || fontFamily == "SF Pro" {
+                let systemFont = NSFont.systemFont(ofSize: size, weight: .regular)
+                return NSFontManager.shared.convert(systemFont, toHaveTrait: .italicFontMask)
+            } else if fontFamily == "New York" {
+                if let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body).withDesign(.serif)?.withSymbolicTraits(.italic) {
+                    return NSFont(descriptor: descriptor, size: size) ?? NSFont.systemFont(ofSize: size)
+                }
+                return NSFont.systemFont(ofSize: size)
+            } else if fontFamily == "EB Garamond" {
+                // Try EB Garamond Italic variant
+                for name in ["EBGaramond-Italic", "EB Garamond Italic"] {
+                    if let font = NSFont(name: name, size: size) {
+                        return font
+                    }
+                }
+                // Fallback: get regular and convert to italic
+                for name in ["EBGaramond", "EB Garamond", "EBGaramond-Regular"] {
+                    if let baseFont = NSFont(name: name, size: size) {
+                        return NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+                    }
+                }
+                return NSFont.systemFont(ofSize: size)
+            } else {
+                if let baseFont = NSFont(name: fontFamily, size: size) {
+                    return NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+                }
+                return NSFont.systemFont(ofSize: size)
+            }
         }
 
         @objc func frameDidChange(_ notification: Notification) {
@@ -712,7 +1095,7 @@ struct MarkdownTextView: NSViewRepresentable {
             let textColor = parent.darkMode ? NSColor.white : NSColor.textColor
 
             // Reset to default style
-            let defaultFont = NSFont.systemFont(ofSize: baseFontSize, weight: .regular)
+            let defaultFont = getFont(size: baseFontSize)
             textView.textStorage?.addAttribute(.font, value: defaultFont, range: fullRange)
             textView.textStorage?.addAttribute(.foregroundColor, value: textColor, range: fullRange)
 
@@ -722,16 +1105,15 @@ struct MarkdownTextView: NSViewRepresentable {
             textView.textStorage?.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
 
             // Headings (scale relative to base font size)
-            highlightPattern(#"^# .+$"#, in: textView, font: .systemFont(ofSize: baseFontSize * 1.5, weight: .bold))
-            highlightPattern(#"^## .+$"#, in: textView, font: .systemFont(ofSize: baseFontSize * 1.25, weight: .bold))
-            highlightPattern(#"^### .+$"#, in: textView, font: .systemFont(ofSize: baseFontSize * 1.125, weight: .semibold))
+            highlightPattern(#"^# .+$"#, in: textView, font: getBoldFont(size: baseFontSize * 1.5))
+            highlightPattern(#"^## .+$"#, in: textView, font: getBoldFont(size: baseFontSize * 1.25))
+            highlightPattern(#"^### .+$"#, in: textView, font: getBoldFont(size: baseFontSize * 1.125))
 
             // Bold
-            highlightPattern(#"\*\*[^*]+\*\*"#, in: textView, font: .systemFont(ofSize: baseFontSize, weight: .bold))
+            highlightPattern(#"\*\*[^*]+\*\*"#, in: textView, font: getBoldFont(size: baseFontSize))
 
             // Italic
-            let italicFont = NSFontManager.shared.convert(defaultFont, toHaveTrait: .italicFontMask)
-            highlightPattern(#"_[^_]+_"#, in: textView, font: italicFont)
+            highlightPattern(#"_[^_]+_"#, in: textView, font: getItalicFont(size: baseFontSize))
         }
 
         private func highlightPattern(_ pattern: String, in textView: NSTextView, font: NSFont) {
