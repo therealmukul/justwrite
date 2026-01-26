@@ -6,6 +6,9 @@ extension Notification.Name {
     static let openNoteRequest = Notification.Name("openNoteRequest")
     static let newNoteRequest = Notification.Name("newNoteRequest")
     static let currentDocumentChanged = Notification.Name("currentDocumentChanged")
+    static let showFormattingToolbar = Notification.Name("showFormattingToolbar")
+    static let hideFormattingToolbar = Notification.Name("hideFormattingToolbar")
+    static let applyFormatting = Notification.Name("applyFormatting")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {

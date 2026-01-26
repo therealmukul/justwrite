@@ -1,10 +1,19 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+// Define markdown UTType if not available
+extension UTType {
+    static var markdown: UTType {
+        UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)
+    }
+}
+
 struct JustWriteDocument: FileDocument {
     var text: String
 
-    static var readableContentTypes: [UTType] { [.plainText, .text] }
+    // Support markdown as primary, plus plain text for compatibility
+    static var readableContentTypes: [UTType] { [.markdown, .plainText, .text] }
+    static var writableContentTypes: [UTType] { [.markdown] }
 
     init(text: String = "") {
         self.text = text
@@ -22,4 +31,7 @@ struct JustWriteDocument: FileDocument {
         let data = Data(text.utf8)
         return FileWrapper(regularFileWithContents: data)
     }
+
+    // Default to .md extension
+    static var defaultFilename: String { "Untitled.md" }
 }
