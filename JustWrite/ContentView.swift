@@ -1,5 +1,7 @@
 import SwiftUI
 import AppKit
+import QuartzCore
+
 
 // Custom accent colors
 extension Color {
@@ -142,21 +144,33 @@ struct SidebarView: View {
             // Notes list
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 4) {
-                    // Current document (if not in folder list)
-                    if let currentURL = notesManager.currentDocumentURL,
-                       !notesManager.notesInFolder.contains(currentURL) {
+                    // Session documents not in folder (e.g., newly created files saved elsewhere)
+                    let sessionDocsOutsideFolder = notesManager.sessionDocuments.filter { url in
+                        !notesManager.notesInFolder.contains(url) && FileManager.default.fileExists(atPath: url.path)
+                    }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+                    ForEach(sessionDocsOutsideFolder, id: \.self) { url in
                         NoteRow(
-                            name: currentURL.deletingPathExtension().lastPathComponent,
-                            isSelected: true,
+                            name: url.deletingPathExtension().lastPathComponent,
+                            url: url,
+                            isSelected: url == notesManager.currentDocumentURL,
                             darkMode: darkMode,
-                            action: {}
+                            action: { notesManager.openDocument(at: url) }
                         )
+                    }
+
+                    // Divider if we have both session docs and folder notes
+                    if !sessionDocsOutsideFolder.isEmpty && !notesManager.notesInFolder.isEmpty {
+                        Divider()
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 4)
                     }
 
                     // Notes from folder
                     ForEach(notesManager.notesInFolder, id: \.self) { url in
                         NoteRow(
                             name: url.deletingPathExtension().lastPathComponent,
+                            url: url,
                             isSelected: url == notesManager.currentDocumentURL,
                             darkMode: darkMode,
                             action: { notesManager.openDocument(at: url) }
@@ -164,7 +178,7 @@ struct SidebarView: View {
                     }
 
                     // Empty state
-                    if notesManager.notesInFolder.isEmpty && notesManager.currentDocumentURL == nil {
+                    if notesManager.notesInFolder.isEmpty && notesManager.sessionDocuments.isEmpty {
                         Text("No notes yet")
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
@@ -226,6 +240,16 @@ struct SidebarView: View {
             notesManager.currentDocumentURL = notification.object as? URL
             notesManager.refresh()
         }
+        // Listen for document saves
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NSDocumentDidSaveNotification"))) { _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                notesManager.refresh()
+            }
+        }
+        // Periodic refresh while sidebar is visible
+        .onReceive(Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()) { _ in
+            notesManager.refresh()
+        }
     }
 }
 
@@ -233,9 +257,14 @@ struct SidebarView: View {
 
 struct NoteRow: View {
     let name: String
+    let url: URL?
     let isSelected: Bool
     let darkMode: Bool
     let action: () -> Void
+
+    @AppStorage("fontSize") private var fontSize: Double = 16
+    @AppStorage("lineSpacing") private var lineSpacing: Double = 6
+    @AppStorage("fontFamily") private var fontFamily: String = "EB Garamond"
 
     var body: some View {
         Button(action: action) {
@@ -260,6 +289,112 @@ struct NoteRow: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 8)
+        .contextMenu {
+            if let url = url {
+                Button {
+                    exportAsPDF(url: url)
+                } label: {
+                    Label("Export as PDF", systemImage: "doc.richtext")
+                }
+            }
+        }
+    }
+
+    private func exportAsPDF(url: URL) {
+        // Read the note content
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+
+        // Create save panel
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.pdf]
+        savePanel.nameFieldStringValue = url.deletingPathExtension().lastPathComponent + ".pdf"
+        savePanel.title = "Export as PDF"
+
+        if savePanel.runModal() == .OK, let saveURL = savePanel.url {
+            createPDF(content: content, saveURL: saveURL)
+        }
+    }
+
+    private func getFont(size: CGFloat) -> NSFont {
+        if fontFamily == "System" || fontFamily == "SF Pro" {
+            return NSFont.systemFont(ofSize: size)
+        } else if fontFamily == "EB Garamond" {
+            for name in ["EBGaramond", "EB Garamond", "EBGaramond-Regular"] {
+                if let font = NSFont(name: name, size: size) {
+                    return font
+                }
+            }
+        } else if let font = NSFont(name: fontFamily, size: size) {
+            return font
+        }
+        return NSFont.systemFont(ofSize: size)
+    }
+
+    @AppStorage("lineLength") private var lineLength: Double = 65
+
+    private func createPDF(content: String, saveURL: URL) {
+        // PDF page settings
+        let pageWidth: CGFloat = 612  // US Letter width in points
+        let pageHeight: CGFloat = 792 // US Letter height in points
+        let marginY: CGFloat = 72     // 1 inch top/bottom margins
+
+        // Scale font size for PDF (screen fonts render smaller than print)
+        // Use 0.65 scale factor to match visual appearance
+        let pdfFontSize = CGFloat(fontSize) * 0.65
+        let pdfLineSpacing = CGFloat(lineSpacing) * 0.65
+
+        // Calculate text width based on line length setting
+        // Average character width is approximately 0.5 * fontSize for most fonts
+        let optimalTextWidth = CGFloat(lineLength) * pdfFontSize * 0.5
+        let maxTextWidth = pageWidth - 72  // At least 0.5 inch margins on each side
+        let textWidth = min(optimalTextWidth, maxTextWidth)
+        let textHeight = pageHeight - (marginY * 2)
+
+        // Center text horizontally on page
+        let marginX = (pageWidth - textWidth) / 2
+
+        // Create attributed string with formatting
+        let font = getFont(size: pdfFontSize)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = pdfLineSpacing
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.black,
+            .paragraphStyle: paragraphStyle
+        ]
+
+        let attributedString = NSAttributedString(string: content, attributes: attributes)
+
+        // Create PDF context
+        var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+
+        guard let context = CGContext(saveURL as CFURL, mediaBox: &mediaBox, nil) else { return }
+
+        // Calculate text layout
+        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
+        var currentRange = CFRange(location: 0, length: 0)
+
+        while currentRange.location < attributedString.length {
+            // Start new page
+            context.beginPage(mediaBox: &mediaBox)
+
+            // Create text frame for this page
+            let framePath = CGPath(rect: CGRect(x: marginX, y: marginY, width: textWidth, height: textHeight), transform: nil)
+            let frame = CTFramesetterCreateFrame(framesetter, currentRange, framePath, nil)
+
+            // Draw the text
+            context.textMatrix = .identity
+            CTFrameDraw(frame, context)
+
+            // Get the range that was drawn
+            let visibleRange = CTFrameGetVisibleStringRange(frame)
+            currentRange.location += visibleRange.length
+
+            context.endPage()
+        }
+
+        context.closePDF()
     }
 }
 
@@ -269,9 +404,13 @@ class NotesManager: ObservableObject {
     @Published var notesInFolder: [URL] = []
     @Published var currentDocumentURL: URL?
     @Published var notesFolder: URL?
+    @Published var sessionDocuments: Set<URL> = []  // Track all documents opened/saved this session
 
     private var folderObserver: Any?
     private var documentObserver: Any?
+    private var saveObserver: Any?
+    private var folderMonitor: DispatchSourceFileSystemObject?
+    private var monitoredFolderDescriptor: Int32 = -1
 
     init() {
         refresh()
@@ -283,6 +422,7 @@ class NotesManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             self?.refresh()
+            self?.setupFolderMonitor()
         }
 
         // Listen for current document changes
@@ -291,8 +431,34 @@ class NotesManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.currentDocumentURL = notification.object as? URL
+            if let url = notification.object as? URL {
+                self?.currentDocumentURL = url
+                self?.sessionDocuments.insert(url)
+            } else {
+                self?.currentDocumentURL = nil
+            }
+            self?.refresh()
         }
+
+        // Listen for document save notifications
+        saveObserver = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("NSDocumentDidSaveNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            // Track saved document
+            if let document = notification.object as? NSDocument,
+               let url = document.fileURL {
+                self?.sessionDocuments.insert(url)
+            }
+            // Delay slightly to ensure file system has updated
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self?.refresh()
+            }
+        }
+
+        // Setup folder monitoring
+        setupFolderMonitor()
     }
 
     deinit {
@@ -301,6 +467,49 @@ class NotesManager: ObservableObject {
         }
         if let observer = documentObserver {
             NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = saveObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        stopFolderMonitor()
+    }
+
+    private func setupFolderMonitor() {
+        // Stop existing monitor
+        stopFolderMonitor()
+
+        guard let folder = notesFolder else { return }
+
+        // Open folder for monitoring
+        let fd = open(folder.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        monitoredFolderDescriptor = fd
+
+        // Create dispatch source to monitor folder
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .rename, .delete, .extend],
+            queue: .main
+        )
+
+        source.setEventHandler { [weak self] in
+            self?.refresh()
+        }
+
+        source.setCancelHandler {
+            close(fd)
+        }
+
+        source.resume()
+        folderMonitor = source
+    }
+
+    private func stopFolderMonitor() {
+        folderMonitor?.cancel()
+        folderMonitor = nil
+        if monitoredFolderDescriptor >= 0 {
+            // Descriptor will be closed by cancel handler
+            monitoredFolderDescriptor = -1
         }
     }
 
@@ -314,9 +523,15 @@ class NotesManager: ObservableObject {
         if let bookmarkData = UserDefaults.standard.data(forKey: "notesFolder") {
             var isStale = false
             if let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, bookmarkDataIsStale: &isStale) {
+                let folderChanged = notesFolder != url
                 notesFolder = url
                 _ = url.startAccessingSecurityScopedResource()
                 loadNotesFromFolder(url)
+
+                // Setup monitor if folder changed or not yet monitoring
+                if folderChanged || folderMonitor == nil {
+                    setupFolderMonitor()
+                }
             }
         }
     }
@@ -517,11 +732,25 @@ class SmoothCursorTextView: NSTextView {
     private var isCursorVisible = true
 
     func setupSmoothCursor(color: NSColor) {
-        // Create cursor view
+        // Ensure text view is layer-backed for GPU compositing
+        wantsLayer = true
+        layer?.drawsAsynchronously = true
+
+        // Create cursor view with GPU-accelerated layer
         let cursor = NSView()
         cursor.wantsLayer = true
-        cursor.layer?.backgroundColor = color.cgColor
-        cursor.layer?.cornerRadius = 1
+        cursor.layerContentsRedrawPolicy = .never  // Cursor is solid color, never needs redraw
+
+        if let cursorLayer = cursor.layer {
+            cursorLayer.backgroundColor = color.cgColor
+            cursorLayer.cornerRadius = 1
+            // GPU optimizations for cursor layer
+            cursorLayer.drawsAsynchronously = true
+            cursorLayer.shouldRasterize = true
+            cursorLayer.rasterizationScale = NSScreen.main?.backingScaleFactor ?? 2.0
+            cursorLayer.allowsEdgeAntialiasing = true
+        }
+
         addSubview(cursor)
         cursorView = cursor
 
@@ -572,11 +801,6 @@ class SmoothCursorTextView: NSTextView {
 
         cursorView.isHidden = false
 
-        guard let layoutManager = layoutManager,
-              let textContainer = textContainer else { return }
-
-        let insertionPoint = selectedRange().location
-
         // Calculate cursor height based on font metrics
         let cursorHeight: CGFloat
         if let font = font {
@@ -585,51 +809,25 @@ class SmoothCursorTextView: NSTextView {
             cursorHeight = 16
         }
 
-        // Get cursor rect
+        // Use NSTextView's built-in method to get the correct cursor rect
+        let insertionPoint = selectedRange().location
+        let charRange = NSRange(location: insertionPoint, length: 0)
+
         var cursorRect: NSRect
 
-        if layoutManager.numberOfGlyphs == 0 || string.isEmpty {
-            // Empty document - position at start
-            cursorRect = NSRect(x: textContainerInset.width, y: textContainerInset.height, width: 2, height: cursorHeight)
+        // Get the rect for the insertion point using firstRect
+        var actualRange = NSRange()
+        let rect = firstRect(forCharacterRange: charRange, actualRange: &actualRange)
+
+        // Convert from screen coordinates to view coordinates
+        if let window = window {
+            let windowRect = window.convertFromScreen(rect)
+            cursorRect = convert(windowRect, from: nil)
+            cursorRect.size.width = 2
+            cursorRect.size.height = cursorHeight
         } else {
-            // Get the insertion point rect from the layout manager
-            let glyphIndex: Int
-            if insertionPoint >= layoutManager.numberOfGlyphs {
-                glyphIndex = max(0, layoutManager.numberOfGlyphs - 1)
-            } else {
-                glyphIndex = layoutManager.glyphIndexForCharacter(at: insertionPoint)
-            }
-
-            // Get the baseline location for this glyph
-            let lineFragmentRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
-            let glyphLocation = layoutManager.location(forGlyphAt: glyphIndex)
-
-            // Baseline Y = lineFragmentRect.minY + glyphLocation.y
-            // Cursor should go from (baseline - descender) to (baseline + ascender)
-            // In flipped coords: top of cursor = baseline - ascender
-            let baselineY = lineFragmentRect.minY + glyphLocation.y
-            let cursorY = baselineY - (font?.ascender ?? cursorHeight)
-
-            if insertionPoint >= string.count && !string.isEmpty {
-                // At end of text - position after last character
-                let lastCharIndex = max(0, layoutManager.numberOfGlyphs - 1)
-                let glyphRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: lastCharIndex, length: 1), in: textContainer)
-                cursorRect = NSRect(
-                    x: glyphRect.maxX + textContainerInset.width,
-                    y: cursorY + textContainerInset.height,
-                    width: 2,
-                    height: cursorHeight
-                )
-            } else {
-                // Normal position - at start of current glyph
-                let glyphRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyphIndex, length: 1), in: textContainer)
-                cursorRect = NSRect(
-                    x: glyphRect.minX + textContainerInset.width,
-                    y: cursorY + textContainerInset.height,
-                    width: 2,
-                    height: cursorHeight
-                )
-            }
+            // Fallback for empty document
+            cursorRect = NSRect(x: textContainerInset.width, y: textContainerInset.height, width: 2, height: cursorHeight)
         }
 
         if animated {
@@ -650,15 +848,21 @@ class SmoothCursorTextView: NSTextView {
 
     override var selectedRanges: [NSValue] {
         didSet {
-            updateCursorPosition(animated: true)
-            resetBlink()
+            // Delay to allow layout manager to update
+            DispatchQueue.main.async { [weak self] in
+                self?.updateCursorPosition(animated: true)
+                self?.resetBlink()
+            }
         }
     }
 
     override func keyDown(with event: NSEvent) {
         super.keyDown(with: event)
-        updateCursorPosition(animated: true)
-        resetBlink()
+        // Delay cursor update to allow layout manager to process the change
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -763,19 +967,74 @@ struct MarkdownTextView: NSViewRepresentable {
         let scrollView = NSScrollView()
         let textView = SmoothCursorTextView()
 
-        // Configure scroll view
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
+        // ===========================================
+        // GPU-ACCELERATED RENDERING SETUP
+        // ===========================================
+
+        // Enable layer-backing for GPU compositing
+        scrollView.wantsLayer = true
+        textView.wantsLayer = true
+
+        // Configure scroll view layer for GPU acceleration
+        if let scrollLayer = scrollView.layer {
+            scrollLayer.drawsAsynchronously = true
+            scrollLayer.shouldRasterize = false
+            scrollLayer.allowsEdgeAntialiasing = true
+        }
+
+        // Configure text view layer for optimal rendering
+        if let textLayer = textView.layer {
+            textLayer.drawsAsynchronously = true
+            textLayer.shouldRasterize = false
+            textLayer.allowsEdgeAntialiasing = true
+        }
+
+        // Optimize layer redraw policy - only redraw on resize, not scroll
+        scrollView.layerContentsRedrawPolicy = .onSetNeedsDisplay
+        textView.layerContentsRedrawPolicy = .onSetNeedsDisplay
+
+        // Enable responsive scrolling (renders ahead for smooth scrolling)
+        scrollView.contentView.wantsLayer = true
+        scrollView.contentView.layerContentsRedrawPolicy = .onSetNeedsDisplay
+        if let clipLayer = scrollView.contentView.layer {
+            clipLayer.drawsAsynchronously = true
+        }
+
+        // ===========================================
+        // SCROLL VIEW CONFIGURATION
+        // ===========================================
+
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
 
-        // Configure text view for writing
+        // Native bouncy scroll - this is the Apple way
+        scrollView.verticalScrollElasticity = .allowed
+        scrollView.horizontalScrollElasticity = .none
+        scrollView.usesPredominantAxisScrolling = true
+
+        // Hide scrollers completely for distraction-free writing
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+
+        // Content insets to allow bounce even with short content
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 20, left: 0, bottom: 100, right: 0)
+
+        // ===========================================
+        // TEXT VIEW CONFIGURATION
+        // ===========================================
+
         textView.isRichText = false
         textView.allowsUndo = true
         textView.isEditable = true
         textView.isSelectable = true
         textView.drawsBackground = true
+
+        // Enable layout manager GPU optimizations
+        if let layoutManager = textView.layoutManager {
+            layoutManager.allowsNonContiguousLayout = true
+            layoutManager.backgroundLayoutEnabled = true
+        }
 
         // Apply dark mode colors
         let backgroundColor = darkMode ? NSColor.black : NSColor.textBackgroundColor
