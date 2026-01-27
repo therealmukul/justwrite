@@ -62,6 +62,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
+        // Check for crash recovery backups
+        checkForCrashRecovery()
+
         // Check if this is first launch (no notes folder set)
         if notesFolder == nil {
             DispatchQueue.main.async {
@@ -75,6 +78,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         hasLaunched = true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Force flush any pending changes before termination
+        NotificationCenter.default.post(name: Notification.Name("flushPendingChanges"), object: nil)
+    }
+
+    private func checkForCrashRecovery() {
+        let stateManager = DocumentStateManager()
+        let backups = stateManager.checkForRecoveryBackups()
+
+        guard let latestBackup = backups.first else { return }
+
+        // Show recovery dialog
+        let alert = NSAlert()
+        alert.messageText = "Recover Unsaved Work?"
+        alert.informativeText = "JustWrite found unsaved changes from \(latestBackup.formattedTimestamp) for \"\(latestBackup.displayName)\". Would you like to recover them?"
+        alert.addButton(withTitle: "Recover")
+        alert.addButton(withTitle: "Discard")
+        alert.alertStyle = .warning
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            // Store recovered text to inject after document opens
+            UserDefaults.standard.set(latestBackup.text, forKey: "recoveredText")
+            if let originalURL = latestBackup.originalURL {
+                UserDefaults.standard.set(originalURL.path, forKey: "recoveredDocumentPath")
+            }
+        }
+
+        // Clear all backups after recovery decision
+        stateManager.clearAllBackups()
     }
 
     func promptForNotesFolder() {

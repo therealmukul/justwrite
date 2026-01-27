@@ -10,6 +10,7 @@
 		A1000001 /* JustWriteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000011 /* JustWriteApp.swift */; };
 		A1000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000012 /* ContentView.swift */; };
 		A1000003 /* JustWriteDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000013 /* JustWriteDocument.swift */; };
+		A1000004 /* DocumentStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000016 /* DocumentStateManager.swift */; };
 		A2000001 /* JustWriteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011 /* JustWriteTests.swift */; };
 		A3000001 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = A3000010 /* Fonts */; };
 /* End PBXBuildFile section */
@@ -30,6 +31,7 @@
 		A1000012 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A1000013 /* JustWriteDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JustWriteDocument.swift; sourceTree = "<group>"; };
 		A1000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1000016 /* DocumentStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStateManager.swift; sourceTree = "<group>"; };
 		A1000015 /* JustWrite.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JustWrite.entitlements; sourceTree = "<group>"; };
 		A2000010 /* JustWriteTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JustWriteTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2000011 /* JustWriteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JustWriteTests.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 				A1000011 /* JustWriteApp.swift */,
 				A1000012 /* ContentView.swift */,
 				A1000013 /* JustWriteDocument.swift */,
+				A1000016 /* DocumentStateManager.swift */,
 				A1000014 /* Info.plist */,
 				A1000015 /* JustWrite.entitlements */,
 				A3000010 /* Fonts */,
@@ -195,6 +198,7 @@
 				A1000001 /* JustWriteApp.swift in Sources */,
 				A1000002 /* ContentView.swift in Sources */,
 				A1000003 /* JustWriteDocument.swift in Sources */,
+				A1000004 /* DocumentStateManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

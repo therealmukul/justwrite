@@ -120,6 +120,7 @@ struct FormatIconButton: View {
 
 struct ContentView: View {
     @Binding var document: JustWriteDocument
+    @StateObject private var documentState = DocumentStateManager()
     @State private var showSidebar = false
     @State private var showSettings = false
     @AppStorage("fontSize") private var fontSize: Double = 16
@@ -150,7 +151,7 @@ struct ContentView: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 // Main editor
-                MarkdownTextView(text: $document.text, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode, fontFamily: fontFamily)
+                MarkdownTextView(text: $document.text, documentState: documentState, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode, fontFamily: fontFamily)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(darkMode ? Color.black : Color(NSColor.textBackgroundColor))
 
@@ -231,28 +232,145 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .newNoteRequest)) { _ in
             createNewNote()
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NSDocumentDidSaveNotification"))) { _ in
+            // Mark as saved when document is written to disk
+            documentState.markAsSaved(text: document.text)
+        }
+        .onChange(of: documentState.hasUnsavedChanges) { _, hasChanges in
+            // Update window title to show unsaved indicator
+            guard let window = NSApp.keyWindow else { return }
+            var baseTitle = window.title
+            if baseTitle.hasSuffix(" \u{2022}") {
+                baseTitle = String(baseTitle.dropLast(2))
+            }
+            window.title = hasChanges ? "\(baseTitle) \u{2022}" : baseTitle
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("flushPendingChanges"))) { _ in
+            // Force flush pending changes (called on app termination)
+            documentState.flushPendingChanges { [self] text in
+                document.text = text
+            }
+            if let currentDoc = NSDocumentController.shared.currentDocument,
+               currentDoc.fileURL != nil {
+                currentDoc.save(nil)
+            }
+        }
+        .onAppear {
+            // Check for recovered text from crash recovery
+            if let recoveredText = UserDefaults.standard.string(forKey: "recoveredText") {
+                document.text = recoveredText
+                documentState.resetForNewDocument(text: recoveredText)
+                documentState.hasUnsavedChanges = true // Mark as needing save
+                UserDefaults.standard.removeObject(forKey: "recoveredText")
+                UserDefaults.standard.removeObject(forKey: "recoveredDocumentPath")
+            }
+        }
         .preferredColorScheme(.light)
     }
 
     private func createNewNote() {
-        // Just clear the editor - don't touch any files
-        // User will manually save with Cmd+S when ready
-        document.text = ""
-
-        // Clear the document's file URL so Cmd+S triggers save dialog
-        if let currentDoc = NSDocumentController.shared.currentDocument {
-            currentDoc.fileURL = nil
+        // SAVE FIRST - never lose work
+        documentState.flushPendingChanges { [self] text in
+            document.text = text
         }
 
-        // Update window title
-        NSApp.keyWindow?.title = "Untitled"
+        // Save current document if it has a URL
+        if let currentDoc = NSDocumentController.shared.currentDocument,
+           currentDoc.fileURL != nil {
+            currentDoc.save(nil)
+        }
 
-        // Notify that current document changed (now untitled)
-        NotificationCenter.default.post(name: .currentDocumentChanged, object: nil)
+        // Get notes folder
+        guard let notesFolder = getNotesFolder() else {
+            // No notes folder set - just clear the editor
+            document.text = ""
+            documentState.resetForNewDocument(text: "")
+            if let currentDoc = NSDocumentController.shared.currentDocument {
+                currentDoc.fileURL = nil
+            }
+            NSApp.keyWindow?.title = "Untitled"
+            NotificationCenter.default.post(name: .currentDocumentChanged, object: nil)
+            return
+        }
+
+        // Generate unique filename
+        let newFileName = generateUniqueFilename(in: notesFolder)
+        let newFileURL = notesFolder.appendingPathComponent(newFileName)
+
+        // Clear the document text first
+        document.text = ""
+        documentState.resetForNewDocument(text: "")
+
+        // Use save(to:) to create the new file - this lets NSDocument handle file creation properly
+        if let currentDoc = NSDocumentController.shared.currentDocument {
+            currentDoc.save(to: newFileURL, ofType: "net.daringfireball.markdown", for: .saveAsOperation) { error in
+                if error != nil {
+                    // Failed - reset to untitled
+                    DispatchQueue.main.async {
+                        currentDoc.fileURL = nil
+                        NSApp.keyWindow?.title = "Untitled"
+                    }
+                    return
+                }
+
+                DispatchQueue.main.async { [self] in
+                    documentState.setCurrentDocumentURL(newFileURL)
+
+                    // Update window title (without .md extension)
+                    let displayName = newFileURL.deletingPathExtension().lastPathComponent
+                    NSApp.keyWindow?.title = displayName
+
+                    // Notify that current document changed and refresh sidebar
+                    NotificationCenter.default.post(name: .currentDocumentChanged, object: newFileURL)
+                    NotificationCenter.default.post(name: .notesFolderChanged, object: nil)
+                }
+            }
+        }
+    }
+
+    private func getNotesFolder() -> URL? {
+        guard let bookmarkData = UserDefaults.standard.data(forKey: "notesFolder") else { return nil }
+        var isStale = false
+        guard let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, bookmarkDataIsStale: &isStale) else { return nil }
+        _ = url.startAccessingSecurityScopedResource()
+        return url
+    }
+
+    private func generateUniqueFilename(in folder: URL) -> String {
+        // Always generate a unique name with timestamp (including milliseconds) to prevent accidental overwrites
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss.SSS"
+        let timestamp = formatter.string(from: Date())
+
+        let baseName = "Note \(timestamp)"
+        let ext = "md"
+
+        // This should always be unique due to timestamp, but add counter just in case
+        var filename = "\(baseName).\(ext)"
+        var fileURL = folder.appendingPathComponent(filename)
+
+        var counter = 1
+        while FileManager.default.fileExists(atPath: fileURL.path) {
+            filename = "\(baseName) (\(counter)).\(ext)"
+            fileURL = folder.appendingPathComponent(filename)
+            counter += 1
+        }
+
+        return filename
     }
 
     private func loadNote(from url: URL) {
         guard let currentDoc = NSDocumentController.shared.currentDocument else { return }
+
+        // SAVE FIRST - never lose work
+        documentState.flushPendingChanges { [self] text in
+            document.text = text
+        }
+
+        // Save current document if it has unsaved changes and a URL
+        if currentDoc.fileURL != nil && documentState.hasUnsavedChanges {
+            currentDoc.save(nil)
+        }
 
         do {
             // Set the file URL first
@@ -261,6 +379,10 @@ struct ContentView: View {
             // Use revert to properly load the file and update modification tracking
             // This prevents "file changed by another application" warnings
             try currentDoc.revert(toContentsOf: url, ofType: url.pathExtension == "md" ? "net.daringfireball.markdown" : "public.plain-text")
+
+            // Update document state with loaded content
+            documentState.markAsSaved(text: document.text)
+            documentState.setCurrentDocumentURL(url)
 
             // Update window title
             NSApp.keyWindow?.title = url.deletingPathExtension().lastPathComponent
@@ -271,6 +393,8 @@ struct ContentView: View {
             // Fallback: just read the content directly
             if let content = try? String(contentsOf: url, encoding: .utf8) {
                 document.text = content
+                documentState.markAsSaved(text: content)
+                documentState.setCurrentDocumentURL(url)
                 NSApp.keyWindow?.title = url.deletingPathExtension().lastPathComponent
                 NotificationCenter.default.post(name: .currentDocumentChanged, object: url)
             }
@@ -953,7 +1077,7 @@ struct SettingsPanel: View {
 class SmoothCursorTextView: NSTextView {
     private var cursorLayer: CALayer?
     private var blinkTimer: Timer?
-    private var cursorColor: NSColor = .textColor
+    private var cursorColor: NSColor = .black  // Safe default, will be updated
 
     // MARK: - Cursor Setup
 
@@ -1030,47 +1154,46 @@ class SmoothCursorTextView: NSTextView {
         }
         cursor.isHidden = false
 
-        // Get cursor height based on current line's heading level
         let insertionPoint = selectedRange().location
-        var cursorHeight: CGFloat = 20
+        let text = string
 
-        // Check if current line is a heading and get appropriate font size
-        let baseFont = font ?? NSFont.systemFont(ofSize: 16)
-        let baseFontSize = baseFont.pointSize
+        // Determine cursor height based on line content (not font attributes)
+        // This is deterministic and doesn't depend on markdown formatting timing
+        let baseFontSize = font?.pointSize ?? 16
+        let cursorHeight: CGFloat
 
-        // Determine heading level by checking line prefix
-        var fontSizeMultiplier: CGFloat = 1.0
-        let nsString = string as NSString
-        if nsString.length > 0 && insertionPoint <= nsString.length {
-            let lineRange = nsString.lineRange(for: NSRange(location: min(insertionPoint, nsString.length - 1), length: 0))
-            if lineRange.length > 0 {
-                let lineText = nsString.substring(with: lineRange)
-                if lineText.hasPrefix("### ") {
-                    fontSizeMultiplier = 1.3
-                } else if lineText.hasPrefix("## ") {
-                    fontSizeMultiplier = 1.6
-                } else if lineText.hasPrefix("# ") {
-                    fontSizeMultiplier = 2.0
-                }
-            }
-        }
-
-        // Calculate cursor height
-        if fontSizeMultiplier > 1.0 {
-            // For headings, calculate based on multiplier
-            let effectiveFontSize = baseFontSize * fontSizeMultiplier
-            cursorHeight = effectiveFontSize * 1.2
-        } else if let textStorage = textStorage, textStorage.length > 0 {
-            // For regular text, use font from textStorage
-            let pos = max(0, min(insertionPoint, textStorage.length - 1))
-            if let attrFont = textStorage.attribute(.font, at: pos, effectiveRange: nil) as? NSFont {
-                cursorHeight = attrFont.ascender + abs(attrFont.descender)
-            }
+        if text.isEmpty {
+            // Empty document - use base font
+            let baseFont = font ?? NSFont.systemFont(ofSize: baseFontSize)
+            cursorHeight = baseFont.ascender + abs(baseFont.descender)
         } else {
-            cursorHeight = baseFontSize * 1.2
+            // Find the current line and check if it's a heading
+            let safeLocation = min(insertionPoint, (text as NSString).length)
+            let lineRange = (text as NSString).lineRange(for: NSRange(location: safeLocation, length: 0))
+            let lineText = (text as NSString).substring(with: lineRange)
+
+            // Check heading level - must have content after the marker to be a heading
+            // Use same multipliers as applyMarkdownHighlighting
+            if lineText.hasPrefix("### ") && lineText.count > 4 {
+                // H3: 1.3x size
+                let headingFont = NSFont.boldSystemFont(ofSize: baseFontSize * 1.3)
+                cursorHeight = headingFont.ascender + abs(headingFont.descender)
+            } else if lineText.hasPrefix("## ") && lineText.count > 3 {
+                // H2: 1.6x size
+                let headingFont = NSFont.boldSystemFont(ofSize: baseFontSize * 1.6)
+                cursorHeight = headingFont.ascender + abs(headingFont.descender)
+            } else if lineText.hasPrefix("# ") && lineText.count > 2 {
+                // H1: 2.0x size
+                let headingFont = NSFont.boldSystemFont(ofSize: baseFontSize * 2.0)
+                cursorHeight = headingFont.ascender + abs(headingFont.descender)
+            } else {
+                // Regular text
+                let baseFont = font ?? NSFont.systemFont(ofSize: baseFontSize)
+                cursorHeight = baseFont.ascender + abs(baseFont.descender)
+            }
         }
 
-        // Get position using firstRect
+        // Get cursor position using firstRect
         let charRange = NSRange(location: insertionPoint, length: 0)
         var actualRange = NSRange()
         let screenRect = firstRect(forCharacterRange: charRange, actualRange: &actualRange)
@@ -1092,12 +1215,16 @@ class SmoothCursorTextView: NSTextView {
             // Liquid glass spring animation using CASpringAnimation
             let oldFrame = cursor.frame
 
-            // Only animate if there's meaningful movement
+            // Calculate movement distance
             let dx = abs(newFrame.origin.x - oldFrame.origin.x)
             let dy = abs(newFrame.origin.y - oldFrame.origin.y)
             let dh = abs(newFrame.height - oldFrame.height)
 
+            // Only animate if there's meaningful movement
             if dx > 0.5 || dy > 0.5 || dh > 0.5 {
+                // Determine if this is a small movement (typing) or large jump (clicking/navigation)
+                let isSmallMovement = dx < 20 && dy < 5
+
                 // Position animation with spring physics
                 let positionAnimation = CASpringAnimation(keyPath: "position")
                 positionAnimation.fromValue = NSValue(point: NSPoint(
@@ -1108,9 +1235,18 @@ class SmoothCursorTextView: NSTextView {
                     x: newFrame.origin.x + newFrame.width / 2,
                     y: newFrame.origin.y + newFrame.height / 2
                 ))
-                positionAnimation.damping = 15
-                positionAnimation.stiffness = 300
-                positionAnimation.mass = 0.8
+
+                if isSmallMovement {
+                    // Fast, snappy animation for typing - minimal lag
+                    positionAnimation.damping = 30
+                    positionAnimation.stiffness = 800
+                    positionAnimation.mass = 0.3
+                } else {
+                    // Smooth liquid animation for larger movements
+                    positionAnimation.damping = 15
+                    positionAnimation.stiffness = 300
+                    positionAnimation.mass = 0.8
+                }
                 positionAnimation.initialVelocity = 0
                 positionAnimation.duration = positionAnimation.settlingDuration
 
@@ -1118,9 +1254,9 @@ class SmoothCursorTextView: NSTextView {
                 let boundsAnimation = CASpringAnimation(keyPath: "bounds.size.height")
                 boundsAnimation.fromValue = oldFrame.height
                 boundsAnimation.toValue = newFrame.height
-                boundsAnimation.damping = 18
-                boundsAnimation.stiffness = 350
-                boundsAnimation.mass = 0.6
+                boundsAnimation.damping = 25
+                boundsAnimation.stiffness = 500
+                boundsAnimation.mass = 0.4
                 boundsAnimation.duration = boundsAnimation.settlingDuration
 
                 CATransaction.begin()
@@ -1219,7 +1355,10 @@ class SmoothCursorTextView: NSTextView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil && cursorLayer == nil {
-            setupCursor(color: cursorColor)
+            // Determine correct color based on appearance
+            let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let color = isDark ? NSColor.white : NSColor.black
+            setupCursor(color: color)
         }
     }
 
@@ -1332,6 +1471,7 @@ class SmoothCursorTextView: NSTextView {
 
 struct MarkdownTextView: NSViewRepresentable {
     @Binding var text: String
+    var documentState: DocumentStateManager
     var fontSize: Double
     var lineSpacing: Double
     var lineLength: Double
@@ -1559,8 +1699,9 @@ struct MarkdownTextView: NSViewRepresentable {
         let backgroundColor = darkMode ? NSColor.black : NSColor.textBackgroundColor
         let textColor = darkMode ? NSColor.white : NSColor.textColor
 
-        // Always update cursor color to ensure it's correct
-        textView.updateCursorColor(textColor)
+        // Always update cursor color - use explicit colors for CALayer compatibility
+        let cursorColor = darkMode ? NSColor.white : NSColor.black
+        textView.updateCursorColor(cursorColor)
 
         if scrollView.backgroundColor != backgroundColor {
             scrollView.backgroundColor = backgroundColor
@@ -1587,6 +1728,7 @@ struct MarkdownTextView: NSViewRepresentable {
         var verticalPadding: CGFloat = 40
         var minimumHorizontalPadding: CGFloat = 40
         private var formattingObserver: Any?
+        private var highlightingWorkItem: DispatchWorkItem?
 
         var optimalTextWidth: CGFloat {
             parent.optimalTextWidth
@@ -1739,8 +1881,30 @@ struct MarkdownTextView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
-            parent.text = textView.string
-            applyMarkdownHighlighting(to: textView)
+            let newText = textView.string
+
+            // Get current document URL for backup tracking
+            let documentURL = NSDocumentController.shared.currentDocument?.fileURL
+
+            // Use document state manager for debounced saves and backup
+            parent.documentState.textDidChange(newText: newText, documentURL: documentURL) { [weak self] committedText in
+                DispatchQueue.main.async {
+                    self?.parent.text = committedText
+                }
+            }
+
+            // Cancel any pending highlighting work
+            highlightingWorkItem?.cancel()
+
+            // Debounce markdown highlighting to avoid blocking cursor animation
+            let workItem = DispatchWorkItem { [weak self, weak textView] in
+                guard let textView = textView else { return }
+                self?.applyMarkdownHighlighting(to: textView)
+            }
+            highlightingWorkItem = workItem
+
+            // Short delay - enough to batch rapid keystrokes but still feel responsive
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
         }
 
         // MARK: - Formatting Actions
@@ -1874,6 +2038,11 @@ struct MarkdownTextView: NSViewRepresentable {
 
             // End editing batch
             textStorage.endEditing()
+
+            // Update cursor size to match the new font at cursor position
+            if let smoothTextView = textView as? SmoothCursorTextView {
+                smoothTextView.updateCursorPosition(animated: false)
+            }
         }
 
         // Check if cursor is within the formatted range (for line-based formats like headings)
