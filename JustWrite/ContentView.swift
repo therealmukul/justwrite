@@ -1030,17 +1030,44 @@ class SmoothCursorTextView: NSTextView {
         }
         cursor.isHidden = false
 
-        // Get cursor height based on font at position
+        // Get cursor height based on current line's heading level
         let insertionPoint = selectedRange().location
         var cursorHeight: CGFloat = 20
 
-        if let textStorage = textStorage, textStorage.length > 0 {
-            let pos = max(0, min(insertionPoint, textStorage.length - 1))
-            if let font = textStorage.attribute(.font, at: pos, effectiveRange: nil) as? NSFont {
-                cursorHeight = font.ascender + abs(font.descender)
+        // Check if current line is a heading and get appropriate font size
+        let baseFont = font ?? NSFont.systemFont(ofSize: 16)
+        let baseFontSize = baseFont.pointSize
+
+        // Determine heading level by checking line prefix
+        var fontSizeMultiplier: CGFloat = 1.0
+        let nsString = string as NSString
+        if nsString.length > 0 && insertionPoint <= nsString.length {
+            let lineRange = nsString.lineRange(for: NSRange(location: min(insertionPoint, nsString.length - 1), length: 0))
+            if lineRange.length > 0 {
+                let lineText = nsString.substring(with: lineRange)
+                if lineText.hasPrefix("### ") {
+                    fontSizeMultiplier = 1.3
+                } else if lineText.hasPrefix("## ") {
+                    fontSizeMultiplier = 1.6
+                } else if lineText.hasPrefix("# ") {
+                    fontSizeMultiplier = 2.0
+                }
             }
-        } else if let font = font {
-            cursorHeight = font.ascender + abs(font.descender)
+        }
+
+        // Calculate cursor height
+        if fontSizeMultiplier > 1.0 {
+            // For headings, calculate based on multiplier
+            let effectiveFontSize = baseFontSize * fontSizeMultiplier
+            cursorHeight = effectiveFontSize * 1.2
+        } else if let textStorage = textStorage, textStorage.length > 0 {
+            // For regular text, use font from textStorage
+            let pos = max(0, min(insertionPoint, textStorage.length - 1))
+            if let attrFont = textStorage.attribute(.font, at: pos, effectiveRange: nil) as? NSFont {
+                cursorHeight = attrFont.ascender + abs(attrFont.descender)
+            }
+        } else {
+            cursorHeight = baseFontSize * 1.2
         }
 
         // Get position using firstRect
@@ -1062,14 +1089,53 @@ class SmoothCursorTextView: NSTextView {
         guard !newFrame.origin.x.isNaN && !newFrame.origin.y.isNaN else { return }
 
         if animated {
-            // Liquid glass spring animation
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(0.25)
-            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.2, 1.0, 0.3, 1.0))
+            // Liquid glass spring animation using CASpringAnimation
+            let oldFrame = cursor.frame
 
-            cursor.frame = newFrame
+            // Only animate if there's meaningful movement
+            let dx = abs(newFrame.origin.x - oldFrame.origin.x)
+            let dy = abs(newFrame.origin.y - oldFrame.origin.y)
+            let dh = abs(newFrame.height - oldFrame.height)
 
-            CATransaction.commit()
+            if dx > 0.5 || dy > 0.5 || dh > 0.5 {
+                // Position animation with spring physics
+                let positionAnimation = CASpringAnimation(keyPath: "position")
+                positionAnimation.fromValue = NSValue(point: NSPoint(
+                    x: oldFrame.origin.x + oldFrame.width / 2,
+                    y: oldFrame.origin.y + oldFrame.height / 2
+                ))
+                positionAnimation.toValue = NSValue(point: NSPoint(
+                    x: newFrame.origin.x + newFrame.width / 2,
+                    y: newFrame.origin.y + newFrame.height / 2
+                ))
+                positionAnimation.damping = 15
+                positionAnimation.stiffness = 300
+                positionAnimation.mass = 0.8
+                positionAnimation.initialVelocity = 0
+                positionAnimation.duration = positionAnimation.settlingDuration
+
+                // Height animation for smooth heading transitions
+                let boundsAnimation = CASpringAnimation(keyPath: "bounds.size.height")
+                boundsAnimation.fromValue = oldFrame.height
+                boundsAnimation.toValue = newFrame.height
+                boundsAnimation.damping = 18
+                boundsAnimation.stiffness = 350
+                boundsAnimation.mass = 0.6
+                boundsAnimation.duration = boundsAnimation.settlingDuration
+
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                cursor.frame = newFrame
+                CATransaction.commit()
+
+                cursor.add(positionAnimation, forKey: "liquidPosition")
+                cursor.add(boundsAnimation, forKey: "liquidBounds")
+            } else {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                cursor.frame = newFrame
+                CATransaction.commit()
+            }
         } else {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
@@ -1754,20 +1820,20 @@ struct MarkdownTextView: NSViewRepresentable {
             // Get cursor position to reveal syntax near cursor
             let cursorLocation = textView.selectedRange().location
 
-            // H1: # Heading - use system bold for reliability, 2x size
-            let h1Font = NSFont.boldSystemFont(ofSize: baseFontSize * 2.0)
+            // H1: # Heading - 2x size
+            let h1Font = getBoldFont(size: baseFontSize * 2.0)
             applyHeading(pattern: #"^(# )(.+)$"#, in: textStorage, string: string,
                         font: h1Font,
                         markerLength: 2, cursorLocation: cursorLocation, backgroundColor: backgroundColor)
 
             // H2: ## Heading - 1.6x size
-            let h2Font = NSFont.boldSystemFont(ofSize: baseFontSize * 1.6)
+            let h2Font = getBoldFont(size: baseFontSize * 1.6)
             applyHeading(pattern: #"^(## )(.+)$"#, in: textStorage, string: string,
                         font: h2Font,
                         markerLength: 3, cursorLocation: cursorLocation, backgroundColor: backgroundColor)
 
             // H3: ### Heading - 1.3x size
-            let h3Font = NSFont.boldSystemFont(ofSize: baseFontSize * 1.3)
+            let h3Font = getBoldFont(size: baseFontSize * 1.3)
             applyHeading(pattern: #"^(### )(.+)$"#, in: textStorage, string: string,
                         font: h3Font,
                         markerLength: 4, cursorLocation: cursorLocation, backgroundColor: backgroundColor)
