@@ -1,37 +1,66 @@
 import SwiftUI
 import UniformTypeIdentifiers
-
-// Define markdown UTType if not available
-extension UTType {
-    static var markdown: UTType {
-        UTType(importedAs: "net.daringfireball.markdown", conformingTo: .plainText)
-    }
-}
+import AppKit
 
 struct JustWriteDocument: FileDocument {
-    var text: String
+    var attributedText: NSAttributedString
 
-    // Support markdown as primary, plus plain text for compatibility
-    static var readableContentTypes: [UTType] { [.markdown, .plainText, .text] }
-    static var writableContentTypes: [UTType] { [.markdown] }
+    // Support RTF as primary, with RTF and plain text for reading
+    static var readableContentTypes: [UTType] { [.rtf, .plainText, .text] }
+    static var writableContentTypes: [UTType] { [.rtf] }
 
     init(text: String = "") {
-        self.text = text
+        // Create attributed string with default attributes
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 16),
+            .foregroundColor: NSColor.textColor
+        ]
+        self.attributedText = NSAttributedString(string: text, attributes: attributes)
+    }
+
+    init(attributedText: NSAttributedString) {
+        self.attributedText = attributedText
     }
 
     init(configuration: ReadConfiguration) throws {
-        if let data = configuration.file.regularFileContents {
-            text = String(decoding: data, as: UTF8.self)
-        } else {
+        guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
+        }
+
+        // Try to read as RTF first
+        if let attributed = NSAttributedString(rtf: data, documentAttributes: nil) {
+            self.attributedText = attributed
+        } else {
+            // Fall back to plain text
+            let text = String(decoding: data, as: UTF8.self)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 16),
+                .foregroundColor: NSColor.textColor
+            ]
+            self.attributedText = NSAttributedString(string: text, attributes: attributes)
         }
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        let data = Data(text.utf8)
+        let range = NSRange(location: 0, length: attributedText.length)
+        guard let data = attributedText.rtf(from: range, documentAttributes: [:]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
         return FileWrapper(regularFileWithContents: data)
     }
 
-    // Default to .md extension
-    static var defaultFilename: String { "Untitled.md" }
+    // Plain text accessor for compatibility
+    var text: String {
+        get {
+            attributedText.string
+        }
+        set {
+            // Create attributed string with default formatting
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 16),
+                .foregroundColor: NSColor.textColor
+            ]
+            attributedText = NSAttributedString(string: newValue, attributes: attributes)
+        }
+    }
 }

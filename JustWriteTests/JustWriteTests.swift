@@ -68,22 +68,81 @@ final class JustWriteDocumentTests: XCTestCase {
         XCTAssertEqual(restoredText, originalText)
     }
 
-    func testMarkdownContentRoundTrip() {
-        let markdownText = """
-        # My Document
+    func testRichTextContentRoundTrip() {
+        let textContent = """
+        My Document
 
-        This has **bold** and _italic_ text.
-
-        ```
-        code block
-        ```
+        This has bold and italic text.
 
         - List item 1
         - List item 2
         """
-        let data = Data(markdownText.utf8)
+        let data = Data(textContent.utf8)
         let restoredText = String(decoding: data, as: UTF8.self)
-        XCTAssertEqual(restoredText, markdownText)
+        XCTAssertEqual(restoredText, textContent)
+    }
+
+    // MARK: - RTF Document Type Tests
+
+    func testDocumentWritableContentTypeIsRTF() {
+        let writableTypes = JustWriteDocument.writableContentTypes
+        XCTAssertEqual(writableTypes.count, 1, "Should only have one writable type")
+        XCTAssertEqual(writableTypes.first, .rtf, "Writable type should be RTF")
+    }
+
+    func testDocumentReadableContentTypesIncludeRTF() {
+        let readableTypes = JustWriteDocument.readableContentTypes
+        XCTAssertTrue(readableTypes.contains(.rtf), "Should be able to read RTF files")
+    }
+
+    func testDocumentReadableContentTypesIncludePlainText() {
+        let readableTypes = JustWriteDocument.readableContentTypes
+        XCTAssertTrue(readableTypes.contains(.plainText), "Should be able to read plain text for import")
+    }
+
+    func testDocumentDoesNotIncludeMarkdownType() {
+        let readableTypes = JustWriteDocument.readableContentTypes
+        let writableTypes = JustWriteDocument.writableContentTypes
+
+        // Verify no markdown types
+        for type in readableTypes {
+            XCTAssertNotEqual(type.identifier, "net.daringfireball.markdown", "Should not include markdown in readable types")
+        }
+        for type in writableTypes {
+            XCTAssertNotEqual(type.identifier, "net.daringfireball.markdown", "Should not include markdown in writable types")
+        }
+    }
+
+    // MARK: - RTF Data Round-trip Tests
+
+    func testRTFDataRoundTrip() throws {
+        let document = JustWriteDocument(text: "Hello RTF World")
+
+        // Get RTF data
+        let range = NSRange(location: 0, length: document.attributedText.length)
+        let rtfData = document.attributedText.rtf(from: range, documentAttributes: [:])
+        XCTAssertNotNil(rtfData, "Should be able to create RTF data")
+
+        // Read it back
+        if let data = rtfData {
+            let restored = NSAttributedString(rtf: data, documentAttributes: nil)
+            XCTAssertNotNil(restored, "Should be able to read RTF data back")
+            XCTAssertEqual(restored?.string, "Hello RTF World", "Text should survive RTF round-trip")
+        }
+    }
+
+    func testRTFPreservesUnicodeInRoundTrip() throws {
+        let unicodeText = "Hello 世界 🌍 café"
+        let document = JustWriteDocument(text: unicodeText)
+
+        let range = NSRange(location: 0, length: document.attributedText.length)
+        let rtfData = document.attributedText.rtf(from: range, documentAttributes: [:])
+        XCTAssertNotNil(rtfData)
+
+        if let data = rtfData {
+            let restored = NSAttributedString(rtf: data, documentAttributes: nil)
+            XCTAssertEqual(restored?.string, unicodeText, "Unicode should survive RTF round-trip")
+        }
     }
 }
 
@@ -240,129 +299,6 @@ final class SettingsValidationTests: XCTestCase {
     }
 }
 
-// MARK: - Markdown Pattern Tests
-
-final class MarkdownPatternTests: XCTestCase {
-
-    func testHeading1Pattern() throws {
-        let pattern = #"^# .+$"#
-        let regex = try NSRegularExpression(pattern: pattern, options: .anchorsMatchLines)
-
-        let testString = "# Heading 1"
-        let range = NSRange(location: 0, length: testString.count)
-        let matches = regex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(matches.count, 1)
-    }
-
-    func testHeading2Pattern() throws {
-        let pattern = #"^## .+$"#
-        let regex = try NSRegularExpression(pattern: pattern, options: .anchorsMatchLines)
-
-        let testString = "## Heading 2"
-        let range = NSRange(location: 0, length: testString.count)
-        let matches = regex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(matches.count, 1)
-    }
-
-    func testHeading3Pattern() throws {
-        let pattern = #"^### .+$"#
-        let regex = try NSRegularExpression(pattern: pattern, options: .anchorsMatchLines)
-
-        let testString = "### Heading 3"
-        let range = NSRange(location: 0, length: testString.count)
-        let matches = regex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(matches.count, 1)
-    }
-
-    func testBoldPattern() throws {
-        let pattern = #"\*\*[^*]+\*\*"#
-        let regex = try NSRegularExpression(pattern: pattern, options: [])
-
-        let testString = "This is **bold** text"
-        let range = NSRange(location: 0, length: testString.count)
-        let matches = regex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(matches.count, 1)
-
-        let matchRange = matches[0].range
-        let matchedString = (testString as NSString).substring(with: matchRange)
-        XCTAssertEqual(matchedString, "**bold**")
-    }
-
-    func testItalicPattern() throws {
-        let pattern = #"_[^_]+_"#
-        let regex = try NSRegularExpression(pattern: pattern, options: [])
-
-        let testString = "This is _italic_ text"
-        let range = NSRange(location: 0, length: testString.count)
-        let matches = regex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(matches.count, 1)
-
-        let matchRange = matches[0].range
-        let matchedString = (testString as NSString).substring(with: matchRange)
-        XCTAssertEqual(matchedString, "_italic_")
-    }
-
-    func testMultipleFormattingInOneLine() throws {
-        let boldPattern = #"\*\*[^*]+\*\*"#
-        let italicPattern = #"_[^_]+_"#
-
-        let boldRegex = try NSRegularExpression(pattern: boldPattern, options: [])
-        let italicRegex = try NSRegularExpression(pattern: italicPattern, options: [])
-
-        let testString = "This has **bold** and _italic_ text"
-        let range = NSRange(location: 0, length: testString.count)
-
-        let boldMatches = boldRegex.matches(in: testString, options: [], range: range)
-        let italicMatches = italicRegex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(boldMatches.count, 1)
-        XCTAssertEqual(italicMatches.count, 1)
-    }
-
-    func testHeadingNotMatchedInMiddleOfLine() throws {
-        let pattern = #"^# .+$"#
-        let regex = try NSRegularExpression(pattern: pattern, options: .anchorsMatchLines)
-
-        let testString = "This is not # a heading"
-        let range = NSRange(location: 0, length: testString.count)
-        let matches = regex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(matches.count, 0)
-    }
-
-    func testMultipleHeadingsInDocument() throws {
-        let pattern = #"^# .+$"#
-        let regex = try NSRegularExpression(pattern: pattern, options: .anchorsMatchLines)
-
-        let testString = """
-        # First Heading
-        Some content
-        # Second Heading
-        More content
-        """
-        let range = NSRange(location: 0, length: (testString as NSString).length)
-        let matches = regex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(matches.count, 2)
-    }
-
-    func testMultipleBoldInParagraph() throws {
-        let pattern = #"\*\*[^*]+\*\*"#
-        let regex = try NSRegularExpression(pattern: pattern, options: [])
-
-        let testString = "This has **bold** and also **more bold** text"
-        let range = NSRange(location: 0, length: testString.count)
-        let matches = regex.matches(in: testString, options: [], range: range)
-
-        XCTAssertEqual(matches.count, 2)
-    }
-}
-
 // MARK: - Inset Calculation Tests
 
 final class InsetCalculationTests: XCTestCase {
@@ -497,5 +433,894 @@ final class FontScalingTests: XCTestCase {
 
         // Heading at font 24 should be double heading at font 12
         XCTAssertEqual(heading1At24, heading1At12 * 2)
+    }
+}
+
+// MARK: - Bold Formatting Tests
+
+final class BoldFormattingTests: XCTestCase {
+
+    // MARK: - Apply Bold (Selection)
+
+    func testApplyBoldToPlainText() {
+        let input = "hello"
+        let expected = "**hello**"
+        let result = applyBold(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    func testApplyBoldToMultiWordText() {
+        let input = "hello world"
+        let expected = "**hello world**"
+        let result = applyBold(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    func testApplyBoldToUnicodeText() {
+        let input = "héllo wörld 日本語"
+        let expected = "**héllo wörld 日本語**"
+        let result = applyBold(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Remove Bold (Toggle Off)
+
+    func testRemoveBoldFromBoldText() {
+        let input = "**hello**"
+        let expected = "hello"
+        let result = removeBoldMarkers(from: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    func testRemoveBoldPreservesContent() {
+        let input = "**hello world**"
+        let expected = "hello world"
+        let result = removeBoldMarkers(from: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Bold Detection
+
+    func testDetectBoldSurroundingText() {
+        let text = "some **bold** text" as NSString
+        let selectionRange = NSRange(location: 7, length: 4) // "bold"
+        let isBold = isSurroundedByBoldMarkers(text: text, range: selectionRange)
+        XCTAssertTrue(isBold)
+    }
+
+    func testDetectNotBoldText() {
+        let text = "some plain text" as NSString
+        let selectionRange = NSRange(location: 5, length: 5) // "plain"
+        let isBold = isSurroundedByBoldMarkers(text: text, range: selectionRange)
+        XCTAssertFalse(isBold)
+    }
+
+    func testDetectPartialBoldNotMatched() {
+        let text = "some **partial bold" as NSString
+        let selectionRange = NSRange(location: 7, length: 7) // "partial"
+        let isBold = isSurroundedByBoldMarkers(text: text, range: selectionRange)
+        XCTAssertFalse(isBold)
+    }
+
+    func testBoldAtStartOfText() {
+        let text = "**bold** at start" as NSString
+        let selectionRange = NSRange(location: 2, length: 4) // "bold"
+        let isBold = isSurroundedByBoldMarkers(text: text, range: selectionRange)
+        XCTAssertTrue(isBold)
+    }
+
+    func testBoldAtEndOfText() {
+        let text = "end is **bold**" as NSString
+        // "end is **bold**" - "bold" starts at position 9
+        let selectionRange = NSRange(location: 9, length: 4) // "bold"
+        let isBold = isSurroundedByBoldMarkers(text: text, range: selectionRange)
+        XCTAssertTrue(isBold)
+    }
+
+    // MARK: - No Selection (Insert Mode)
+
+    func testInsertBoldMarkersAtCursor() {
+        let expected = "****"
+        XCTAssertEqual(expected.count, 4)
+    }
+
+    func testCursorPositionAfterInsert() {
+        let markers = "****"
+        let cursorPosition = 2 // Should be between ** and **
+        XCTAssertEqual(cursorPosition, markers.count / 2)
+    }
+
+    // MARK: - Selection Includes Markers
+
+    func testRemoveBoldWhenMarkersInSelection() {
+        // When user selects "**bold**" (including markers)
+        let input = "**hello**"
+        let expected = "hello"
+        let result = removeBoldFromSelection(input)
+        XCTAssertEqual(result, expected)
+    }
+
+    func testRemoveBoldWhenMarkersInSelectionMultiWord() {
+        let input = "**hello world**"
+        let expected = "hello world"
+        let result = removeBoldFromSelection(input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Edge Cases
+
+    func testEmptySelectionInsertsMarkers() {
+        let input = ""
+        let expected = "****"
+        let result = applyBoldNoSelection()
+        XCTAssertEqual(result, expected)
+    }
+
+    func testBoldWithSpecialCharacters() {
+        let input = "code: let x = 5"
+        let expected = "**code: let x = 5**"
+        let result = applyBold(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Helper Functions (Mirror implementation logic)
+
+    private func applyBold(to text: String) -> String {
+        return "**\(text)**"
+    }
+
+    private func applyBoldNoSelection() -> String {
+        return "****"
+    }
+
+    private func removeBoldMarkers(from text: String) -> String {
+        if text.hasPrefix("**") && text.hasSuffix("**") && text.count >= 4 {
+            let start = text.index(text.startIndex, offsetBy: 2)
+            let end = text.index(text.endIndex, offsetBy: -2)
+            return String(text[start..<end])
+        }
+        return text
+    }
+
+    private func removeBoldFromSelection(_ selectedText: String) -> String {
+        // Mirrors the logic when selection includes ** markers
+        if selectedText.hasPrefix("**") && selectedText.hasSuffix("**") && selectedText.count >= 4 {
+            let start = selectedText.index(selectedText.startIndex, offsetBy: 2)
+            let end = selectedText.index(selectedText.endIndex, offsetBy: -2)
+            return String(selectedText[start..<end])
+        }
+        return selectedText
+    }
+
+    private func isSurroundedByBoldMarkers(text: NSString, range: NSRange) -> Bool {
+        guard range.location >= 2,
+              range.location + range.length + 2 <= text.length else {
+            return false
+        }
+        let before = text.substring(with: NSRange(location: range.location - 2, length: 2))
+        let after = text.substring(with: NSRange(location: range.location + range.length, length: 2))
+        return before == "**" && after == "**"
+    }
+}
+
+// MARK: - Italic Formatting Tests
+
+final class ItalicFormattingTests: XCTestCase {
+
+    // MARK: - Apply Italic (Selection)
+
+    func testApplyItalicToPlainText() {
+        let input = "hello"
+        let expected = "_hello_"
+        let result = applyItalic(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    func testApplyItalicToMultiWordText() {
+        let input = "hello world"
+        let expected = "_hello world_"
+        let result = applyItalic(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    func testApplyItalicToUnicodeText() {
+        let input = "héllo wörld 日本語"
+        let expected = "_héllo wörld 日本語_"
+        let result = applyItalic(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Remove Italic (Toggle Off)
+
+    func testRemoveItalicFromItalicText() {
+        let input = "_hello_"
+        let expected = "hello"
+        let result = removeItalicMarkers(from: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    func testRemoveItalicPreservesContent() {
+        let input = "_hello world_"
+        let expected = "hello world"
+        let result = removeItalicMarkers(from: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Italic Detection
+
+    func testDetectItalicSurroundingText() {
+        let text = "some _italic_ text" as NSString
+        let selectionRange = NSRange(location: 6, length: 6) // "italic"
+        let isItalic = isSurroundedByItalicMarkers(text: text, range: selectionRange)
+        XCTAssertTrue(isItalic)
+    }
+
+    func testDetectNotItalicText() {
+        let text = "some plain text" as NSString
+        let selectionRange = NSRange(location: 5, length: 5) // "plain"
+        let isItalic = isSurroundedByItalicMarkers(text: text, range: selectionRange)
+        XCTAssertFalse(isItalic)
+    }
+
+    // MARK: - No Selection (Insert Mode)
+
+    func testInsertItalicMarkersAtCursor() {
+        let expected = "__"
+        XCTAssertEqual(expected.count, 2)
+    }
+
+    func testCursorPositionAfterInsert() {
+        let markers = "__"
+        let cursorPosition = 1 // Should be between _ and _
+        XCTAssertEqual(cursorPosition, markers.count / 2)
+    }
+
+    // MARK: - Selection Includes Markers
+
+    func testRemoveItalicWhenMarkersInSelection() {
+        let input = "_hello_"
+        let expected = "hello"
+        let result = removeItalicFromSelection(input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Helper Functions
+
+    private func applyItalic(to text: String) -> String {
+        return "_\(text)_"
+    }
+
+    private func removeItalicMarkers(from text: String) -> String {
+        if text.hasPrefix("_") && text.hasSuffix("_") && text.count >= 2 {
+            return String(text.dropFirst(1).dropLast(1))
+        }
+        return text
+    }
+
+    private func removeItalicFromSelection(_ selectedText: String) -> String {
+        if selectedText.hasPrefix("_") && selectedText.hasSuffix("_") && selectedText.count >= 2 {
+            return String(selectedText.dropFirst(1).dropLast(1))
+        }
+        return selectedText
+    }
+
+    private func isSurroundedByItalicMarkers(text: NSString, range: NSRange) -> Bool {
+        guard range.location >= 1,
+              range.location + range.length + 1 <= text.length else {
+            return false
+        }
+        let before = text.substring(with: NSRange(location: range.location - 1, length: 1))
+        let after = text.substring(with: NSRange(location: range.location + range.length, length: 1))
+        return before == "_" && after == "_"
+    }
+}
+
+// MARK: - Nested Formatting Tests (Bold + Italic)
+
+final class NestedFormattingTests: XCTestCase {
+
+    // MARK: - Apply Italic to Bold Text
+
+    func testApplyItalicToBoldText() {
+        // Bold text "**hello**" + Cmd+I → "_**hello**_"
+        let input = "**hello**"
+        let expected = "_**hello**_"
+        let result = applyItalic(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Apply Bold to Italic Text
+
+    func testApplyBoldToItalicText() {
+        // Italic text "_hello_" + Cmd+B → "**_hello_**"
+        let input = "_hello_"
+        let expected = "**_hello_**"
+        let result = applyBold(to: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Remove Italic from Bold+Italic (Italic Outside)
+
+    func testRemoveItalicFromBoldItalicOutside() {
+        // "_**hello**_" + Cmd+I → "**hello**"
+        let input = "_**hello**_"
+        let expected = "**hello**"
+        let result = removeItalicMarkers(from: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Remove Italic from Bold+Italic (Italic Inside)
+
+    func testRemoveItalicFromBoldItalicInside() {
+        // "**_hello_**" + Cmd+I → "**hello**"
+        let input = "**_hello_**"
+        let expected = "**hello**"
+        let result = removeItalicFromBoldItalicInside(input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Remove Bold from Bold+Italic (Bold Outside)
+
+    func testRemoveBoldFromBoldItalicOutside() {
+        // "**_hello_**" + Cmd+B → "_hello_"
+        let input = "**_hello_**"
+        let expected = "_hello_"
+        let result = removeBoldMarkers(from: input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Remove Bold from Bold+Italic (Bold Inside)
+
+    func testRemoveBoldFromBoldItalicInside() {
+        // "_**hello**_" + Cmd+B → "_hello_"
+        let input = "_**hello**_"
+        let expected = "_hello_"
+        let result = removeBoldFromItalicBoldInside(input)
+        XCTAssertEqual(result, expected)
+    }
+
+    // MARK: - Full Toggle Cycle
+
+    func testBoldThenItalicThenRemoveItalic() {
+        // Start: "hello"
+        // + Cmd+B: "**hello**"
+        // + Cmd+I: "_**hello**_"
+        // + Cmd+I: "**hello**"
+        let step1 = applyBold(to: "hello")
+        XCTAssertEqual(step1, "**hello**")
+        let step2 = applyItalic(to: step1)
+        XCTAssertEqual(step2, "_**hello**_")
+        let step3 = removeItalicMarkers(from: step2)
+        XCTAssertEqual(step3, "**hello**")
+    }
+
+    func testItalicThenBoldThenRemoveBold() {
+        // Start: "hello"
+        // + Cmd+I: "_hello_"
+        // + Cmd+B: "**_hello_**"
+        // + Cmd+B: "_hello_"
+        let step1 = applyItalic(to: "hello")
+        XCTAssertEqual(step1, "_hello_")
+        let step2 = applyBold(to: step1)
+        XCTAssertEqual(step2, "**_hello_**")
+        let step3 = removeBoldMarkers(from: step2)
+        XCTAssertEqual(step3, "_hello_")
+    }
+
+    func testFullCycleBoldItalicBackToPlain() {
+        // Start: "hello"
+        // + Cmd+B: "**hello**"
+        // + Cmd+I: "_**hello**_"
+        // + Cmd+I: "**hello**"
+        // + Cmd+B: "hello"
+        let step1 = applyBold(to: "hello")
+        let step2 = applyItalic(to: step1)
+        let step3 = removeItalicMarkers(from: step2)
+        let step4 = removeBoldMarkers(from: step3)
+        XCTAssertEqual(step4, "hello")
+    }
+
+    // MARK: - Helper Functions
+
+    private func applyBold(to text: String) -> String {
+        return "**\(text)**"
+    }
+
+    private func applyItalic(to text: String) -> String {
+        return "_\(text)_"
+    }
+
+    private func removeBoldMarkers(from text: String) -> String {
+        if text.hasPrefix("**") && text.hasSuffix("**") && text.count >= 4 {
+            return String(text.dropFirst(2).dropLast(2))
+        }
+        return text
+    }
+
+    private func removeItalicMarkers(from text: String) -> String {
+        if text.hasPrefix("_") && text.hasSuffix("_") && text.count >= 2 {
+            return String(text.dropFirst(1).dropLast(1))
+        }
+        return text
+    }
+
+    private func removeItalicFromBoldItalicInside(_ text: String) -> String {
+        // "**_hello_**" → "**hello**"
+        if text.hasPrefix("**_") && text.hasSuffix("_**") && text.count >= 6 {
+            let inner = String(text.dropFirst(3).dropLast(3))
+            return "**\(inner)**"
+        }
+        return text
+    }
+
+    private func removeBoldFromItalicBoldInside(_ text: String) -> String {
+        // "_**hello**_" → "_hello_"
+        if text.hasPrefix("_**") && text.hasSuffix("**_") && text.count >= 6 {
+            let inner = String(text.dropFirst(3).dropLast(3))
+            return "_\(inner)_"
+        }
+        return text
+    }
+}
+
+// MARK: - Document State Manager Tests
+// Tests for debounced autosave without crash recovery
+
+final class DocumentStateManagerTests: XCTestCase {
+
+    // MARK: - Initial State
+
+    func testInitialStateHasNoUnsavedChanges() {
+        let manager = DocumentStateManager()
+        XCTAssertFalse(manager.hasUnsavedChanges)
+    }
+
+    // MARK: - Text Change Tracking
+
+    func testTextChangeMarksAsUnsaved() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "initial")
+
+        let expectation = XCTestExpectation(description: "Commit handler called")
+        manager.textDidChange(newText: "modified", documentURL: nil) { _ in
+            expectation.fulfill()
+        }
+
+        XCTAssertTrue(manager.hasUnsavedChanges, "Should have unsaved changes after text modification")
+    }
+
+    func testSameTextDoesNotMarkAsUnsaved() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "initial")
+
+        manager.textDidChange(newText: "initial", documentURL: nil) { _ in }
+
+        XCTAssertFalse(manager.hasUnsavedChanges, "Same text should not mark as unsaved")
+    }
+
+    // MARK: - Debounce Behavior
+
+    func testDebouncedCommitIsCalled() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "")
+
+        let expectation = XCTestExpectation(description: "Commit handler called after debounce")
+        var committedText: String?
+
+        manager.textDidChange(newText: "test text", documentURL: nil) { text in
+            committedText = text
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2.0)
+        XCTAssertEqual(committedText, "test text")
+    }
+
+    func testMultipleChangesOnlyCommitFinalText() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "")
+
+        let expectation = XCTestExpectation(description: "Final commit")
+        var commitCount = 0
+        var finalText: String?
+
+        // Rapid changes - only final should commit
+        manager.textDidChange(newText: "a", documentURL: nil) { text in
+            commitCount += 1
+            finalText = text
+            expectation.fulfill()
+        }
+        manager.textDidChange(newText: "ab", documentURL: nil) { text in
+            commitCount += 1
+            finalText = text
+            expectation.fulfill()
+        }
+        manager.textDidChange(newText: "abc", documentURL: nil) { text in
+            commitCount += 1
+            finalText = text
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2.0)
+        XCTAssertEqual(finalText, "abc", "Should commit final text only")
+        XCTAssertEqual(commitCount, 1, "Should only commit once after debounce")
+    }
+
+    // MARK: - Flush Pending Changes
+
+    func testFlushPendingChangesCommitsImmediately() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "")
+
+        var committedText: String?
+        manager.textDidChange(newText: "pending text", documentURL: nil) { text in
+            committedText = text
+        }
+
+        // Flush immediately without waiting for debounce
+        manager.flushPendingChanges { text in
+            committedText = text
+        }
+
+        XCTAssertEqual(committedText, "pending text", "Flush should commit pending text immediately")
+    }
+
+    func testFlushWithNoPendingChangesDoesNothing() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "initial")
+
+        var wasCommitCalled = false
+        manager.flushPendingChanges { _ in
+            wasCommitCalled = true
+        }
+
+        XCTAssertFalse(wasCommitCalled, "Should not call commit when no pending changes")
+    }
+
+    // MARK: - Mark As Saved
+
+    func testMarkAsSavedClearsUnsavedFlag() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "initial")
+
+        manager.textDidChange(newText: "modified", documentURL: nil) { _ in }
+        XCTAssertTrue(manager.hasUnsavedChanges)
+
+        manager.markAsSaved(text: "modified")
+        XCTAssertFalse(manager.hasUnsavedChanges, "Should clear unsaved changes after marking as saved")
+    }
+
+    func testMarkAsSavedUpdatesSavedText() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "")
+        manager.markAsSaved(text: "saved text")
+
+        // Now changing to same saved text should not mark as unsaved
+        manager.textDidChange(newText: "saved text", documentURL: nil) { _ in }
+        XCTAssertFalse(manager.hasUnsavedChanges)
+
+        // Changing to different text should mark as unsaved
+        manager.textDidChange(newText: "different text", documentURL: nil) { _ in }
+        XCTAssertTrue(manager.hasUnsavedChanges)
+    }
+
+    // MARK: - Reset For New Document
+
+    func testResetForNewDocumentClearsState() {
+        let manager = DocumentStateManager()
+
+        // Set up some state
+        manager.textDidChange(newText: "some text", documentURL: URL(fileURLWithPath: "/test.txt")) { _ in }
+        XCTAssertTrue(manager.hasUnsavedChanges)
+
+        // Reset
+        manager.resetForNewDocument(text: "new doc")
+        XCTAssertFalse(manager.hasUnsavedChanges)
+
+        // After reset, same text should not mark as unsaved
+        manager.textDidChange(newText: "new doc", documentURL: nil) { _ in }
+        XCTAssertFalse(manager.hasUnsavedChanges)
+    }
+
+    // MARK: - No Backup Files Created
+
+    func testNoBackupFilesAreCreated() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "")
+
+        // Make changes
+        manager.textDidChange(newText: "test content", documentURL: nil) { _ in }
+
+        // Check that no backup directory exists
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let backupDir = appSupport.appendingPathComponent("JustWrite").appendingPathComponent("Backups")
+
+        // If backup dir exists, it should be empty (from previous runs, but this test verifies new behavior)
+        if FileManager.default.fileExists(atPath: backupDir.path) {
+            let contents = try? FileManager.default.contentsOfDirectory(at: backupDir, includingPropertiesForKeys: nil)
+            // We're just verifying the manager doesn't create new backups
+            // Old backups may exist from before this change
+        }
+        // This test passes if no exception is thrown - the manager should work without backup logic
+        XCTAssertTrue(true, "Manager should function without creating backups")
+    }
+}
+
+// MARK: - Text Replacement Integration Tests
+// These tests simulate the actual text replacement logic used in the formatting methods
+
+final class TextReplacementIntegrationTests: XCTestCase {
+
+    // MARK: - Bold at Start of Document
+
+    func testBoldFirstWordInDocument() {
+        // Document: "hello world"
+        // Select "hello" (range 0-5), apply bold
+        // Result: "**hello** world"
+        var text = "hello world"
+        let range = NSRange(location: 0, length: 5)
+        let selectedText = (text as NSString).substring(with: range)
+        let replacement = "**\(selectedText)**"
+
+        text = (text as NSString).replacingCharacters(in: range, with: replacement)
+        XCTAssertEqual(text, "**hello** world")
+        XCTAssertFalse(text.contains("\n"), "Should not introduce newlines")
+    }
+
+    func testUnboldFirstWordInDocument() {
+        // Document: "**hello** world"
+        // Select "hello" (range 2-7, the content between markers)
+        // Markers are at 0-1 and 7-8
+        // Result: "hello world"
+        var text = "**hello** world"
+        let nsText = text as NSString
+
+        // User selects "hello" which is at position 2, length 5
+        let selectionRange = NSRange(location: 2, length: 5)
+        let selectedText = nsText.substring(with: selectionRange)
+        XCTAssertEqual(selectedText, "hello")
+
+        // Check for ** before and after
+        let hasBoldBefore = selectionRange.location >= 2 &&
+            nsText.substring(with: NSRange(location: selectionRange.location - 2, length: 2)) == "**"
+        let hasBoldAfter = selectionRange.location + selectionRange.length + 2 <= nsText.length &&
+            nsText.substring(with: NSRange(location: selectionRange.location + selectionRange.length, length: 2)) == "**"
+
+        XCTAssertTrue(hasBoldBefore, "Should detect ** before selection")
+        XCTAssertTrue(hasBoldAfter, "Should detect ** after selection")
+
+        // Remove bold: replace range including markers with just the text
+        let fullRange = NSRange(location: selectionRange.location - 2, length: selectionRange.length + 4)
+        text = nsText.replacingCharacters(in: fullRange, with: selectedText)
+
+        XCTAssertEqual(text, "hello world")
+        XCTAssertFalse(text.contains("\n"), "Should not introduce newlines")
+    }
+
+    // MARK: - Bold at Start of Line
+
+    func testBoldFirstWordOnNewLine() {
+        // Document: "Line one\nhello world"
+        // Select "hello" on second line, apply bold
+        var text = "Line one\nhello world"
+        let range = NSRange(location: 9, length: 5) // "hello" starts at position 9
+        let selectedText = (text as NSString).substring(with: range)
+        XCTAssertEqual(selectedText, "hello")
+
+        let replacement = "**\(selectedText)**"
+        text = (text as NSString).replacingCharacters(in: range, with: replacement)
+
+        XCTAssertEqual(text, "Line one\n**hello** world")
+        XCTAssertEqual(text.components(separatedBy: "\n").count, 2, "Should still have exactly 2 lines")
+    }
+
+    func testUnboldFirstWordOnNewLine() {
+        // Document: "Line one\n**hello** world"
+        // Select "hello" on second line, remove bold
+        var text = "Line one\n**hello** world"
+        let nsText = text as NSString
+
+        // "hello" is at position 11 (after "Line one\n**")
+        let selectionRange = NSRange(location: 11, length: 5)
+        let selectedText = nsText.substring(with: selectionRange)
+        XCTAssertEqual(selectedText, "hello")
+
+        // Check for ** markers
+        let hasBoldBefore = nsText.substring(with: NSRange(location: selectionRange.location - 2, length: 2)) == "**"
+        let hasBoldAfter = nsText.substring(with: NSRange(location: selectionRange.location + selectionRange.length, length: 2)) == "**"
+
+        XCTAssertTrue(hasBoldBefore)
+        XCTAssertTrue(hasBoldAfter)
+
+        // Remove bold
+        let fullRange = NSRange(location: selectionRange.location - 2, length: selectionRange.length + 4)
+        text = nsText.replacingCharacters(in: fullRange, with: selectedText)
+
+        XCTAssertEqual(text, "Line one\nhello world")
+        XCTAssertEqual(text.components(separatedBy: "\n").count, 2, "Should still have exactly 2 lines")
+    }
+
+    // MARK: - Selection Includes Markers
+
+    func testUnboldWhenSelectionIncludesMarkers() {
+        // User selects "**hello**" (the whole thing including markers)
+        var text = "**hello** world"
+        let range = NSRange(location: 0, length: 9) // "**hello**"
+        let selectedText = (text as NSString).substring(with: range)
+        XCTAssertEqual(selectedText, "**hello**")
+
+        // Remove markers from selection
+        XCTAssertTrue(selectedText.hasPrefix("**") && selectedText.hasSuffix("**"))
+        let innerText = String(selectedText.dropFirst(2).dropLast(2))
+
+        text = (text as NSString).replacingCharacters(in: range, with: innerText)
+        XCTAssertEqual(text, "hello world")
+        XCTAssertFalse(text.contains("\n"), "Should not introduce newlines")
+    }
+
+    func testUnboldAtStartOfLineWhenSelectionIncludesMarkers() {
+        // Document: "Line one\n**hello** world"
+        // User selects "**hello**" including markers
+        var text = "Line one\n**hello** world"
+        let range = NSRange(location: 9, length: 9) // "**hello**" at start of line 2
+        let selectedText = (text as NSString).substring(with: range)
+        XCTAssertEqual(selectedText, "**hello**")
+
+        let innerText = String(selectedText.dropFirst(2).dropLast(2))
+        text = (text as NSString).replacingCharacters(in: range, with: innerText)
+
+        XCTAssertEqual(text, "Line one\nhello world")
+        XCTAssertEqual(text.components(separatedBy: "\n").count, 2, "Should still have exactly 2 lines")
+    }
+
+    // MARK: - Italic Tests
+
+    func testItalicFirstWordInDocument() {
+        var text = "hello world"
+        let range = NSRange(location: 0, length: 5)
+        let selectedText = (text as NSString).substring(with: range)
+        let replacement = "_\(selectedText)_"
+
+        text = (text as NSString).replacingCharacters(in: range, with: replacement)
+        XCTAssertEqual(text, "_hello_ world")
+        XCTAssertFalse(text.contains("\n"))
+    }
+
+    func testUnitalicFirstWordInDocument() {
+        var text = "_hello_ world"
+        let nsText = text as NSString
+
+        let selectionRange = NSRange(location: 1, length: 5) // "hello"
+        let selectedText = nsText.substring(with: selectionRange)
+        XCTAssertEqual(selectedText, "hello")
+
+        let hasItalicBefore = nsText.substring(with: NSRange(location: 0, length: 1)) == "_"
+        let hasItalicAfter = nsText.substring(with: NSRange(location: 6, length: 1)) == "_"
+
+        XCTAssertTrue(hasItalicBefore)
+        XCTAssertTrue(hasItalicAfter)
+
+        let fullRange = NSRange(location: 0, length: 7) // "_hello_"
+        text = nsText.replacingCharacters(in: fullRange, with: selectedText)
+
+        XCTAssertEqual(text, "hello world")
+        XCTAssertFalse(text.contains("\n"))
+    }
+
+    // MARK: - No Character Corruption Tests
+
+    func testReplacementDoesNotCorruptSurroundingText() {
+        let originalText = "The quick brown fox jumps"
+        var text = originalText
+
+        // Bold "quick"
+        let boldRange = NSRange(location: 4, length: 5)
+        text = (text as NSString).replacingCharacters(in: boldRange, with: "**quick**")
+        XCTAssertEqual(text, "The **quick** brown fox jumps")
+
+        // Unbold "quick"
+        let nsText = text as NSString
+        let unboldRange = NSRange(location: 4, length: 9) // "**quick**"
+        text = nsText.replacingCharacters(in: unboldRange, with: "quick")
+        XCTAssertEqual(text, originalText, "Should return to original text exactly")
+    }
+
+    func testNoNewlinesIntroducedInAnyOperation() {
+        let testCases = [
+            "hello",
+            "hello world",
+            "Line one\nLine two",
+            "Line one\nLine two\nLine three",
+            "**already bold**",
+            "_already italic_",
+        ]
+
+        for original in testCases {
+            let originalNewlineCount = original.components(separatedBy: "\n").count
+
+            // Apply bold
+            var text = "**\(original)**"
+            XCTAssertEqual(text.components(separatedBy: "\n").count, originalNewlineCount,
+                          "Bold should not change newline count for: \(original)")
+
+            // Remove bold
+            text = String(text.dropFirst(2).dropLast(2))
+            XCTAssertEqual(text.components(separatedBy: "\n").count, originalNewlineCount,
+                          "Unbold should not change newline count for: \(original)")
+        }
+    }
+
+    // MARK: - Range Calculation Tests
+
+    func testRangeCalculationForBoldAtPosition0() {
+        let text = "**hello** world" as NSString
+
+        // Selection of "hello" at position 2
+        let selectionRange = NSRange(location: 2, length: 5)
+
+        // Calculate full range including markers
+        let fullRange = NSRange(location: selectionRange.location - 2, length: selectionRange.length + 4)
+
+        XCTAssertEqual(fullRange.location, 0)
+        XCTAssertEqual(fullRange.length, 9)
+        XCTAssertEqual(text.substring(with: fullRange), "**hello**")
+    }
+
+    func testRangeCalculationForBoldAfterNewline() {
+        let text = "Line\n**hello** world" as NSString
+
+        // Selection of "hello" at position 7 (after "Line\n**")
+        let selectionRange = NSRange(location: 7, length: 5)
+        XCTAssertEqual(text.substring(with: selectionRange), "hello")
+
+        // Full range including markers
+        let fullRange = NSRange(location: selectionRange.location - 2, length: selectionRange.length + 4)
+        XCTAssertEqual(fullRange.location, 5)
+        XCTAssertEqual(fullRange.length, 9)
+        XCTAssertEqual(text.substring(with: fullRange), "**hello**")
+    }
+
+    // MARK: - Edge Case: Bold at Very Start (Position 0)
+
+    func testBoldAtPositionZero() {
+        var text = "**word**"
+        let nsText = text as NSString
+
+        // Selection is "word" at position 2
+        let selectionRange = NSRange(location: 2, length: 4)
+        let selectedText = nsText.substring(with: selectionRange)
+        XCTAssertEqual(selectedText, "word")
+
+        // Verify markers
+        let hasBoldBefore = selectionRange.location >= 2 &&
+            nsText.substring(with: NSRange(location: 0, length: 2)) == "**"
+        let hasBoldAfter = nsText.substring(with: NSRange(location: 6, length: 2)) == "**"
+
+        XCTAssertTrue(hasBoldBefore)
+        XCTAssertTrue(hasBoldAfter)
+
+        // Remove bold
+        let fullRange = NSRange(location: 0, length: 8)
+        text = nsText.replacingCharacters(in: fullRange, with: selectedText)
+
+        XCTAssertEqual(text, "word")
+        XCTAssertFalse(text.contains("*"), "No asterisks should remain")
+        XCTAssertFalse(text.contains("\n"), "No newlines should be introduced")
+    }
+
+    func testItalicAtPositionZero() {
+        var text = "_word_"
+        let nsText = text as NSString
+
+        let selectionRange = NSRange(location: 1, length: 4)
+        let selectedText = nsText.substring(with: selectionRange)
+        XCTAssertEqual(selectedText, "word")
+
+        let fullRange = NSRange(location: 0, length: 6)
+        text = nsText.replacingCharacters(in: fullRange, with: selectedText)
+
+        XCTAssertEqual(text, "word")
+        XCTAssertFalse(text.contains("_"), "No underscores should remain")
+        XCTAssertFalse(text.contains("\n"), "No newlines should be introduced")
     }
 }

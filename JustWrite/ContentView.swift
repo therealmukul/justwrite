@@ -20,32 +20,9 @@ extension Color {
 struct FormattingToolbar: View {
     var body: some View {
         HStack(spacing: 2) {
-            // Headings
-            FormatButton(label: "H1", action: { applyFormat("h1") })
-            FormatButton(label: "H2", action: { applyFormat("h2") })
-            FormatButton(label: "H3", action: { applyFormat("h3") })
-
-            Divider()
-                .frame(height: 20)
-                .padding(.horizontal, 6)
-
-            // Bold & Italic
+            // Bold & Italic only
             FormatButton(label: "B", fontWeight: .bold, action: { applyFormat("bold") })
             FormatButton(label: "I", isItalic: true, action: { applyFormat("italic") })
-
-            Divider()
-                .frame(height: 20)
-                .padding(.horizontal, 6)
-
-            // Link
-            FormatIconButton(icon: "link", action: { applyFormat("link") })
-
-            // Quote
-            FormatButton(label: "\"", action: { applyFormat("quote") })
-
-            // Lists
-            FormatIconButton(icon: "list.bullet", action: { applyFormat("bullet") })
-            FormatIconButton(icon: "list.number", action: { applyFormat("number") })
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -94,29 +71,6 @@ struct FormatButton: View {
     }
 }
 
-struct FormatIconButton: View {
-    let icon: String
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.primary)
-                .frame(width: 28, height: 28)
-        }
-        .buttonStyle(.plain)
-        .contentShape(Rectangle())
-        .background {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isHovered ? Color.primary.opacity(0.1) : Color.clear)
-        }
-        .onHover { hovering in
-            isHovered = hovering
-        }
-    }
-}
 
 struct ContentView: View {
     @Binding var document: JustWriteDocument
@@ -151,7 +105,7 @@ struct ContentView: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 // Main editor
-                MarkdownTextView(text: $document.text, documentState: documentState, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode, fontFamily: fontFamily)
+                RichTextView(attributedText: $document.attributedText, documentState: documentState, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode, fontFamily: fontFamily)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(darkMode ? Color.black : Color(NSColor.textBackgroundColor))
 
@@ -255,16 +209,6 @@ struct ContentView: View {
                 currentDoc.save(nil)
             }
         }
-        .onAppear {
-            // Check for recovered text from crash recovery
-            if let recoveredText = UserDefaults.standard.string(forKey: "recoveredText") {
-                document.text = recoveredText
-                documentState.resetForNewDocument(text: recoveredText)
-                documentState.hasUnsavedChanges = true // Mark as needing save
-                UserDefaults.standard.removeObject(forKey: "recoveredText")
-                UserDefaults.standard.removeObject(forKey: "recoveredDocumentPath")
-            }
-        }
         .preferredColorScheme(.light)
     }
 
@@ -303,7 +247,7 @@ struct ContentView: View {
 
         // Use save(to:) to create the new file - this lets NSDocument handle file creation properly
         if let currentDoc = NSDocumentController.shared.currentDocument {
-            currentDoc.save(to: newFileURL, ofType: "net.daringfireball.markdown", for: .saveAsOperation) { error in
+            currentDoc.save(to: newFileURL, ofType: "public.rtf", for: .saveAsOperation) { error in
                 if error != nil {
                     // Failed - reset to untitled
                     DispatchQueue.main.async {
@@ -316,7 +260,7 @@ struct ContentView: View {
                 DispatchQueue.main.async { [self] in
                     documentState.setCurrentDocumentURL(newFileURL)
 
-                    // Update window title (without .md extension)
+                    // Update window title (without .rtf extension)
                     let displayName = newFileURL.deletingPathExtension().lastPathComponent
                     NSApp.keyWindow?.title = displayName
 
@@ -337,13 +281,13 @@ struct ContentView: View {
     }
 
     private func generateUniqueFilename(in folder: URL) -> String {
-        // Always generate a unique name with timestamp (including milliseconds) to prevent accidental overwrites
+        // Generate a human-readable unique name with timestamp
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss.SSS"
+        formatter.dateFormat = "d MMM HH.mm.ss"
         let timestamp = formatter.string(from: Date())
 
-        let baseName = "Note \(timestamp)"
-        let ext = "md"
+        let baseName = timestamp
+        let ext = "rtf"
 
         // This should always be unique due to timestamp, but add counter just in case
         var filename = "\(baseName).\(ext)"
@@ -378,7 +322,7 @@ struct ContentView: View {
 
             // Use revert to properly load the file and update modification tracking
             // This prevents "file changed by another application" warnings
-            try currentDoc.revert(toContentsOf: url, ofType: url.pathExtension == "md" ? "net.daringfireball.markdown" : "public.plain-text")
+            try currentDoc.revert(toContentsOf: url, ofType: url.pathExtension == "rtf" ? "public.rtf" : "public.plain-text")
 
             // Update document state with loaded content
             documentState.markAsSaved(text: document.text)
@@ -877,11 +821,11 @@ class NotesManager: ObservableObject {
                 options: [.skipsHiddenFiles]
             )
 
-            // Filter for text files and sort by modification date (newest first)
+            // Filter for RTF and text files, sort by modification date (newest first)
             notesInFolder = contents
                 .filter { url in
                     let ext = url.pathExtension.lowercased()
-                    return ext == "txt" || ext == "md" || ext == "markdown" || ext.isEmpty
+                    return ext == "rtf" || ext == "txt" || ext.isEmpty
                 }
                 .sorted { url1, url2 in
                     let date1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date.distantPast
@@ -1078,6 +1022,7 @@ class SmoothCursorTextView: NSTextView {
     private var cursorLayer: CALayer?
     private var blinkTimer: Timer?
     private var cursorColor: NSColor = .black  // Safe default, will be updated
+    var baseFontSize: CGFloat = 16  // Set from coordinator, used for fixed cursor height
 
     // MARK: - Cursor Setup
 
@@ -1155,52 +1100,18 @@ class SmoothCursorTextView: NSTextView {
         cursor.isHidden = false
 
         let insertionPoint = selectedRange().location
-        let text = string
 
-        // Determine cursor height based on line content (not font attributes)
-        // This is deterministic and doesn't depend on markdown formatting timing
-        let baseFontSize = font?.pointSize ?? 16
-        let cursorHeight: CGFloat
+        // Fixed cursor height based on base font size from settings
+        let baseFont = NSFont.systemFont(ofSize: baseFontSize)
+        let cursorHeight = baseFont.ascender + abs(baseFont.descender)
 
-        if text.isEmpty {
-            // Empty document - use base font
-            let baseFont = font ?? NSFont.systemFont(ofSize: baseFontSize)
-            cursorHeight = baseFont.ascender + abs(baseFont.descender)
-        } else {
-            // Find the current line and check if it's a heading
-            let safeLocation = min(insertionPoint, (text as NSString).length)
-            let lineRange = (text as NSString).lineRange(for: NSRange(location: safeLocation, length: 0))
-            let lineText = (text as NSString).substring(with: lineRange)
-
-            // Check heading level - must have content after the marker to be a heading
-            // Use same multipliers as applyMarkdownHighlighting
-            if lineText.hasPrefix("### ") && lineText.count > 4 {
-                // H3: 1.3x size
-                let headingFont = NSFont.boldSystemFont(ofSize: baseFontSize * 1.3)
-                cursorHeight = headingFont.ascender + abs(headingFont.descender)
-            } else if lineText.hasPrefix("## ") && lineText.count > 3 {
-                // H2: 1.6x size
-                let headingFont = NSFont.boldSystemFont(ofSize: baseFontSize * 1.6)
-                cursorHeight = headingFont.ascender + abs(headingFont.descender)
-            } else if lineText.hasPrefix("# ") && lineText.count > 2 {
-                // H1: 2.0x size
-                let headingFont = NSFont.boldSystemFont(ofSize: baseFontSize * 2.0)
-                cursorHeight = headingFont.ascender + abs(headingFont.descender)
-            } else {
-                // Regular text
-                let baseFont = font ?? NSFont.systemFont(ofSize: baseFontSize)
-                cursorHeight = baseFont.ascender + abs(baseFont.descender)
-            }
-        }
-
-        // Get cursor position using firstRect
+        // Get cursor position using firstRect - simple and reliable
         let charRange = NSRange(location: insertionPoint, length: 0)
         var actualRange = NSRange()
         let screenRect = firstRect(forCharacterRange: charRange, actualRange: &actualRange)
         let windowRect = window.convertFromScreen(screenRect)
         let viewRect = convert(windowRect, from: nil)
 
-        // Calculate cursor frame
         let newFrame = CGRect(
             x: viewRect.origin.x,
             y: viewRect.origin.y,
@@ -1408,69 +1319,12 @@ class SmoothCursorTextView: NSTextView {
         return nil
     }
 
-    func applyMarkdownFormat(_ format: String) {
-        let range = selectedRange()
-        guard range.length > 0 else { return }
-
-        let selectedText = (string as NSString).substring(with: range)
-
-        var replacement: String
-        switch format {
-        case "bold":
-            replacement = "**\(selectedText)**"
-        case "italic":
-            replacement = "_\(selectedText)_"
-        case "h1":
-            // Add # at the start of the line
-            let lineRange = (string as NSString).lineRange(for: range)
-            let lineText = (string as NSString).substring(with: lineRange)
-            let newLineText = "# " + lineText.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "^#{1,6}\\s*", with: "", options: .regularExpression)
-            insertText(newLineText, replacementRange: lineRange)
-            return
-        case "h2":
-            let lineRange = (string as NSString).lineRange(for: range)
-            let lineText = (string as NSString).substring(with: lineRange)
-            let newLineText = "## " + lineText.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "^#{1,6}\\s*", with: "", options: .regularExpression)
-            insertText(newLineText, replacementRange: lineRange)
-            return
-        case "h3":
-            let lineRange = (string as NSString).lineRange(for: range)
-            let lineText = (string as NSString).substring(with: lineRange)
-            let newLineText = "### " + lineText.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "^#{1,6}\\s*", with: "", options: .regularExpression)
-            insertText(newLineText, replacementRange: lineRange)
-            return
-        case "link":
-            replacement = "[\(selectedText)](url)"
-        case "quote":
-            let lineRange = (string as NSString).lineRange(for: range)
-            let lineText = (string as NSString).substring(with: lineRange)
-            let newLineText = "> " + lineText
-            insertText(newLineText, replacementRange: lineRange)
-            return
-        case "bullet":
-            let lineRange = (string as NSString).lineRange(for: range)
-            let lineText = (string as NSString).substring(with: lineRange)
-            let newLineText = "- " + lineText
-            insertText(newLineText, replacementRange: lineRange)
-            return
-        case "number":
-            let lineRange = (string as NSString).lineRange(for: range)
-            let lineText = (string as NSString).substring(with: lineRange)
-            let newLineText = "1. " + lineText
-            insertText(newLineText, replacementRange: lineRange)
-            return
-        default:
-            return
-        }
-
-        insertText(replacement, replacementRange: range)
-    }
 }
 
-// MARK: - Markdown Text View (NSViewRepresentable)
+// MARK: - Rich Text View (NSViewRepresentable)
 
-struct MarkdownTextView: NSViewRepresentable {
-    @Binding var text: String
+struct RichTextView: NSViewRepresentable {
+    @Binding var attributedText: NSAttributedString
     var documentState: DocumentStateManager
     var fontSize: Double
     var lineSpacing: Double
@@ -1588,7 +1442,7 @@ struct MarkdownTextView: NSViewRepresentable {
         // TEXT VIEW CONFIGURATION
         // ===========================================
 
-        textView.isRichText = false
+        textView.isRichText = true
         textView.allowsUndo = true
         textView.isEditable = true
         textView.isSelectable = true
@@ -1613,6 +1467,7 @@ struct MarkdownTextView: NSViewRepresentable {
 
         // Typography for comfortable writing
         textView.font = getFont(size: CGFloat(fontSize))
+        textView.baseFontSize = CGFloat(fontSize)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = CGFloat(lineSpacing)
         textView.defaultParagraphStyle = paragraphStyle
@@ -1638,8 +1493,8 @@ struct MarkdownTextView: NSViewRepresentable {
         context.coordinator.verticalPadding = verticalPadding
         context.coordinator.minimumHorizontalPadding = minimumHorizontalPadding
 
-        // Set initial text
-        textView.string = text
+        // Set initial attributed text
+        textView.textStorage?.setAttributedString(attributedText)
 
         // Observe frame changes to update centering
         scrollView.postsFrameChangedNotifications = true
@@ -1665,10 +1520,10 @@ struct MarkdownTextView: NSViewRepresentable {
         // Update coordinator's parent reference so it has current values
         context.coordinator.parent = self
 
-        // Only update if text changed externally
-        if textView.string != text {
+        // Only update if text changed externally (compare plain string for efficiency)
+        if textView.string != attributedText.string {
             let selectedRanges = textView.selectedRanges
-            textView.string = text
+            textView.textStorage?.setAttributedString(attributedText)
             textView.selectedRanges = selectedRanges
         }
 
@@ -1678,6 +1533,7 @@ struct MarkdownTextView: NSViewRepresentable {
         let newFontName = newFont.fontName
         if textView.font?.pointSize != CGFloat(fontSize) || currentFontName != newFontName {
             textView.font = newFont
+            textView.baseFontSize = CGFloat(fontSize)
             // Update all existing text with new font
             if let textStorage = textView.textStorage, textStorage.length > 0 {
                 textStorage.addAttribute(.font, value: newFont, range: NSRange(location: 0, length: textStorage.length))
@@ -1715,26 +1571,22 @@ struct MarkdownTextView: NSViewRepresentable {
 
         // Update centering
         context.coordinator.updateTextInsets()
-
-        // Always reapply markdown highlighting after updates
-        context.coordinator.applyMarkdownHighlighting(to: textView)
     }
 
     // MARK: - Coordinator
 
     class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: MarkdownTextView
+        var parent: RichTextView
         weak var textView: NSTextView?
         var verticalPadding: CGFloat = 40
         var minimumHorizontalPadding: CGFloat = 40
         private var formattingObserver: Any?
-        private var highlightingWorkItem: DispatchWorkItem?
 
         var optimalTextWidth: CGFloat {
             parent.optimalTextWidth
         }
 
-        init(_ parent: MarkdownTextView) {
+        init(_ parent: RichTextView) {
             self.parent = parent
             super.init()
 
@@ -1744,10 +1596,45 @@ struct MarkdownTextView: NSViewRepresentable {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                if let format = notification.userInfo?["format"] as? String,
-                   let smoothTextView = self?.textView as? SmoothCursorTextView {
-                    smoothTextView.applyMarkdownFormat(format)
+                guard let format = notification.userInfo?["format"] as? String,
+                      let textView = self?.textView,
+                      let textStorage = textView.textStorage else { return }
+
+                let range = textView.selectedRange()
+                guard range.length > 0 else { return }
+
+                let fontManager = NSFontManager.shared
+
+                // Apply formatting to selected range
+                textStorage.beginEditing()
+                textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
+                    guard let currentFont = value as? NSFont else { return }
+
+                    let newFont: NSFont
+                    switch format {
+                    case "bold":
+                        // Toggle bold
+                        let traits = fontManager.traits(of: currentFont)
+                        if traits.contains(.boldFontMask) {
+                            newFont = fontManager.convert(currentFont, toNotHaveTrait: .boldFontMask)
+                        } else {
+                            newFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
+                        }
+                    case "italic":
+                        // Toggle italic
+                        let traits = fontManager.traits(of: currentFont)
+                        if traits.contains(.italicFontMask) {
+                            newFont = fontManager.convert(currentFont, toNotHaveTrait: .italicFontMask)
+                        } else {
+                            newFont = fontManager.convert(currentFont, toHaveTrait: .italicFontMask)
+                        }
+                    default:
+                        return
+                    }
+
+                    textStorage.addAttribute(.font, value: newFont, range: attrRange)
                 }
+                textStorage.endEditing()
             }
         }
 
@@ -1880,471 +1767,27 @@ struct MarkdownTextView: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            let newText = textView.string
+            guard let textView = notification.object as? NSTextView,
+                  let textStorage = textView.textStorage else { return }
 
             // Get current document URL for backup tracking
             let documentURL = NSDocumentController.shared.currentDocument?.fileURL
+            let newText = textView.string
 
             // Use document state manager for debounced saves and backup
-            parent.documentState.textDidChange(newText: newText, documentURL: documentURL) { [weak self] committedText in
+            parent.documentState.textDidChange(newText: newText, documentURL: documentURL) { [weak self] (_: String) in
+                // Commit the attributed text to the document
                 DispatchQueue.main.async {
-                    self?.parent.text = committedText
-                }
-            }
-
-            // Cancel any pending highlighting work
-            highlightingWorkItem?.cancel()
-
-            // Debounce markdown highlighting to avoid blocking cursor animation
-            let workItem = DispatchWorkItem { [weak self, weak textView] in
-                guard let textView = textView else { return }
-                self?.applyMarkdownHighlighting(to: textView)
-            }
-            highlightingWorkItem = workItem
-
-            // Short delay - enough to batch rapid keystrokes but still feel responsive
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
-        }
-
-        // MARK: - Formatting Actions
-
-        @objc func toggleBold() {
-            insertMarkdown(prefix: "**", suffix: "**")
-        }
-
-        @objc func toggleItalic() {
-            insertMarkdown(prefix: "_", suffix: "_")
-        }
-
-        @objc func makeHeading1() {
-            insertLinePrefix("# ")
-        }
-
-        @objc func makeHeading2() {
-            insertLinePrefix("## ")
-        }
-
-        private func insertMarkdown(prefix: String, suffix: String) {
-            guard let textView = textView else { return }
-
-            let selectedRange = textView.selectedRange()
-            let selectedText = (textView.string as NSString).substring(with: selectedRange)
-
-            let replacement = "\(prefix)\(selectedText)\(suffix)"
-            textView.insertText(replacement, replacementRange: selectedRange)
-
-            // Position cursor inside if no selection
-            if selectedRange.length == 0 {
-                let newPosition = selectedRange.location + prefix.count
-                textView.setSelectedRange(NSRange(location: newPosition, length: 0))
-            }
-        }
-
-        private func insertLinePrefix(_ prefix: String) {
-            guard let textView = textView else { return }
-
-            let string = textView.string as NSString
-            let selectedRange = textView.selectedRange()
-
-            // Find start of current line
-            let lineRange = string.lineRange(for: NSRange(location: selectedRange.location, length: 0))
-            let lineStart = lineRange.location
-
-            // Insert prefix at line start
-            textView.insertText(prefix, replacementRange: NSRange(location: lineStart, length: 0))
-        }
-
-        // MARK: - Markdown WYSIWYG Rendering
-
-        func applyMarkdownHighlighting(to textView: NSTextView) {
-            guard let textStorage = textView.textStorage else { return }
-
-            let string = textView.string
-            let fullRange = NSRange(location: 0, length: (string as NSString).length)
-            guard fullRange.length > 0 else { return }
-
-            let baseFontSize = CGFloat(parent.fontSize)
-            let textColor = parent.darkMode ? NSColor.white : NSColor.textColor
-            let backgroundColor = parent.darkMode ? NSColor.black : NSColor.textBackgroundColor
-
-            // Begin editing batch
-            textStorage.beginEditing()
-
-            // Reset to default style
-            let defaultFont = getFont(size: baseFontSize)
-            textStorage.addAttribute(.font, value: defaultFont, range: fullRange)
-            textStorage.addAttribute(.foregroundColor, value: textColor, range: fullRange)
-
-            // Apply line spacing
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.lineSpacing = CGFloat(parent.lineSpacing)
-            textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
-
-            // Get cursor position to reveal syntax near cursor
-            let cursorLocation = textView.selectedRange().location
-
-            // H1: # Heading - 2x size
-            let h1Font = getBoldFont(size: baseFontSize * 2.0)
-            applyHeading(pattern: #"^(# )(.+)$"#, in: textStorage, string: string,
-                        font: h1Font,
-                        markerLength: 2, cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // H2: ## Heading - 1.6x size
-            let h2Font = getBoldFont(size: baseFontSize * 1.6)
-            applyHeading(pattern: #"^(## )(.+)$"#, in: textStorage, string: string,
-                        font: h2Font,
-                        markerLength: 3, cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // H3: ### Heading - 1.3x size
-            let h3Font = getBoldFont(size: baseFontSize * 1.3)
-            applyHeading(pattern: #"^(### )(.+)$"#, in: textStorage, string: string,
-                        font: h3Font,
-                        markerLength: 4, cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // Bold: **text**
-            applyInlineFormat(pattern: #"(\*\*)([^\*]+)(\*\*)"#, in: textStorage, string: string,
-                             font: getBoldFont(size: baseFontSize),
-                             cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // Italic: _text_
-            applyInlineFormat(pattern: #"(_)([^_]+)(_)"#, in: textStorage, string: string,
-                             font: getItalicFont(size: baseFontSize),
-                             cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // Inline code: `code`
-            applyInlineCode(in: textStorage, string: string, baseFontSize: baseFontSize,
-                           cursorLocation: cursorLocation, textColor: textColor, backgroundColor: backgroundColor)
-
-            // Links: [text](url)
-            applyLinks(in: textStorage, string: string, baseFontSize: baseFontSize,
-                      cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // Block quotes: > text
-            applyBlockQuotes(in: textStorage, string: string, baseFontSize: baseFontSize,
-                            cursorLocation: cursorLocation, textColor: textColor, backgroundColor: backgroundColor)
-
-            // Bullet lists: - item
-            applyBulletLists(in: textStorage, string: string, baseFontSize: baseFontSize,
-                            cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // Numbered lists: 1. item
-            applyNumberedLists(in: textStorage, string: string, baseFontSize: baseFontSize,
-                              cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // Strikethrough: ~~text~~
-            applyStrikethrough(in: textStorage, string: string, baseFontSize: baseFontSize,
-                              cursorLocation: cursorLocation, backgroundColor: backgroundColor)
-
-            // End editing batch
-            textStorage.endEditing()
-
-            // Update cursor size to match the new font at cursor position
-            if let smoothTextView = textView as? SmoothCursorTextView {
-                smoothTextView.updateCursorPosition(animated: false)
-            }
-        }
-
-        // Check if cursor is within the formatted range (for line-based formats like headings)
-        private func shouldRevealSyntax(at range: NSRange, cursorLocation: Int) -> Bool {
-            // Reveal only if cursor is within the range (not adjacent)
-            return cursorLocation >= range.location &&
-                   cursorLocation <= range.location + range.length
-        }
-
-        // Check if cursor is inside the content of an inline format (not at the end)
-        // This hides markers immediately after completing the closing marker
-        private func shouldRevealInlineSyntax(fullRange: NSRange, contentRange: NSRange, cursorLocation: Int) -> Bool {
-            // Reveal only if cursor is within the content portion (between markers)
-            // or before the opening marker (still typing)
-            return cursorLocation >= fullRange.location &&
-                   cursorLocation < fullRange.location + fullRange.length &&
-                   !(cursorLocation > contentRange.location + contentRange.length)
-        }
-
-        // Hide text by making it invisible (but still in document)
-        private func hideText(in textStorage: NSTextStorage, range: NSRange, backgroundColor: NSColor) {
-            // Make text nearly invisible - tiny font and background-matching color
-            textStorage.addAttribute(.font, value: NSFont.systemFont(ofSize: 0.01), range: range)
-            textStorage.addAttribute(.foregroundColor, value: backgroundColor, range: range)
-        }
-
-        // Apply heading formatting with hidden markers
-        private func applyHeading(pattern: String, in textStorage: NSTextStorage, string: String,
-                                  font: NSFont, markerLength: Int, cursorLocation: Int, backgroundColor: NSColor) {
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: .anchorsMatchLines) else { return }
-            let range = NSRange(location: 0, length: (string as NSString).length)
-
-            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-                guard let match = match, match.numberOfRanges >= 3 else { return }
-
-                let fullRange = match.range
-                let markerRange = match.range(at: 1)  // The "# " part
-                let contentRange = match.range(at: 2)  // The heading text
-
-                // Apply heading font to entire line (including content)
-                textStorage.addAttribute(.font, value: font, range: contentRange)
-
-                // Hide or show marker based on cursor position
-                if self.shouldRevealSyntax(at: fullRange, cursorLocation: cursorLocation) {
-                    // Show marker with muted color
-                    let mutedColor = backgroundColor.blended(withFraction: 0.4,
-                                    of: self.parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: markerRange)
-                    textStorage.addAttribute(.font, value: font, range: markerRange)
-                } else {
-                    self.hideText(in: textStorage, range: markerRange, backgroundColor: backgroundColor)
+                    guard let self = self,
+                          let currentStorage = self.textView?.textStorage else { return }
+                    self.parent.attributedText = NSAttributedString(attributedString: currentStorage)
                 }
             }
         }
 
-        // Apply inline formatting (bold, italic) with hidden markers
-        private func applyInlineFormat(pattern: String, in textStorage: NSTextStorage, string: String,
-                                       font: NSFont, cursorLocation: Int, backgroundColor: NSColor) {
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return }
-            let range = NSRange(location: 0, length: (string as NSString).length)
-
-            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-                guard let match = match,
-                      match.numberOfRanges >= 4 else { return }
-
-                let fullRange = match.range
-                let openMarker = match.range(at: 1)
-                let content = match.range(at: 2)
-                let closeMarker = match.range(at: 3)
-
-                // Apply font to content
-                textStorage.addAttribute(.font, value: font, range: content)
-
-                // Hide or show markers - hide immediately when cursor is at/after the closing marker
-                if self.shouldRevealInlineSyntax(fullRange: fullRange, contentRange: content, cursorLocation: cursorLocation) {
-                    let mutedColor = backgroundColor.blended(withFraction: 0.35,
-                                    of: self.parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: openMarker)
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: closeMarker)
-                } else {
-                    self.hideText(in: textStorage, range: openMarker, backgroundColor: backgroundColor)
-                    self.hideText(in: textStorage, range: closeMarker, backgroundColor: backgroundColor)
-                }
-            }
-        }
-
-        // Apply inline code formatting
-        private func applyInlineCode(in textStorage: NSTextStorage, string: String, baseFontSize: CGFloat,
-                                     cursorLocation: Int, textColor: NSColor, backgroundColor: NSColor) {
-            guard let regex = try? NSRegularExpression(pattern: #"(`)([^`]+)(`)"#, options: []) else { return }
-            let range = NSRange(location: 0, length: (string as NSString).length)
-
-            let codeFont = NSFont.monospacedSystemFont(ofSize: baseFontSize * 0.9, weight: .regular)
-            let codeBackground = parent.darkMode ?
-                NSColor.white.withAlphaComponent(0.1) :
-                NSColor.black.withAlphaComponent(0.06)
-
-            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-                guard let match = match, match.numberOfRanges >= 4 else { return }
-
-                let fullRange = match.range
-                let openMarker = match.range(at: 1)
-                let content = match.range(at: 2)
-                let closeMarker = match.range(at: 3)
-
-                // Apply code styling to content
-                textStorage.addAttribute(.font, value: codeFont, range: content)
-                textStorage.addAttribute(.backgroundColor, value: codeBackground, range: content)
-
-                // Hide or show markers
-                if self.shouldRevealInlineSyntax(fullRange: fullRange, contentRange: content, cursorLocation: cursorLocation) {
-                    let mutedColor = backgroundColor.blended(withFraction: 0.35,
-                                    of: self.parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: openMarker)
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: closeMarker)
-                } else {
-                    self.hideText(in: textStorage, range: openMarker, backgroundColor: backgroundColor)
-                    self.hideText(in: textStorage, range: closeMarker, backgroundColor: backgroundColor)
-                }
-            }
-        }
-
-        // Apply link formatting: [text](url)
-        private func applyLinks(in textStorage: NSTextStorage, string: String, baseFontSize: CGFloat,
-                               cursorLocation: Int, backgroundColor: NSColor) {
-            guard let regex = try? NSRegularExpression(pattern: #"(\[)([^\]]+)(\]\()([^\)]+)(\))"#, options: []) else { return }
-            let range = NSRange(location: 0, length: (string as NSString).length)
-
-            let linkColor = parent.darkMode ? Color.appAccentDark : Color.appAccentLight
-
-            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-                guard let match = match, match.numberOfRanges >= 6 else { return }
-
-                let fullRange = match.range
-                let openBracket = match.range(at: 1)
-                let linkText = match.range(at: 2)
-                let middlePart = match.range(at: 3)  // ](
-                let url = match.range(at: 4)
-                let closeParen = match.range(at: 5)
-
-                // Style link text
-                textStorage.addAttribute(.foregroundColor, value: NSColor(linkColor), range: linkText)
-                textStorage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: linkText)
-
-                // Hide or show syntax - use linkText as content range
-                if self.shouldRevealInlineSyntax(fullRange: fullRange, contentRange: linkText, cursorLocation: cursorLocation) {
-                    let mutedColor = backgroundColor.blended(withFraction: 0.35,
-                                    of: self.parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: openBracket)
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: middlePart)
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: url)
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: closeParen)
-                } else {
-                    self.hideText(in: textStorage, range: openBracket, backgroundColor: backgroundColor)
-                    self.hideText(in: textStorage, range: middlePart, backgroundColor: backgroundColor)
-                    self.hideText(in: textStorage, range: url, backgroundColor: backgroundColor)
-                    self.hideText(in: textStorage, range: closeParen, backgroundColor: backgroundColor)
-                }
-            }
-        }
-
-        // Apply block quote formatting: > text
-        private func applyBlockQuotes(in textStorage: NSTextStorage, string: String, baseFontSize: CGFloat,
-                                      cursorLocation: Int, textColor: NSColor, backgroundColor: NSColor) {
-            guard let regex = try? NSRegularExpression(pattern: #"^(> )(.+)$"#, options: .anchorsMatchLines) else { return }
-            let range = NSRange(location: 0, length: (string as NSString).length)
-
-            let quoteColor = textColor.withAlphaComponent(0.7)
-            let quoteFont = getItalicFont(size: baseFontSize)
-
-            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-                guard let match = match, match.numberOfRanges >= 3 else { return }
-
-                let fullRange = match.range
-                let marker = match.range(at: 1)
-                let content = match.range(at: 2)
-
-                // Style quote content
-                textStorage.addAttribute(.foregroundColor, value: quoteColor, range: content)
-                textStorage.addAttribute(.font, value: quoteFont, range: content)
-
-                // Create indented paragraph style for content
-                let quoteParagraph = NSMutableParagraphStyle()
-                quoteParagraph.lineSpacing = CGFloat(parent.lineSpacing)
-                quoteParagraph.firstLineHeadIndent = 16
-                quoteParagraph.headIndent = 16
-                textStorage.addAttribute(.paragraphStyle, value: quoteParagraph, range: content)
-
-                // Hide or show marker
-                if shouldRevealSyntax(at: fullRange, cursorLocation: cursorLocation) {
-                    let mutedColor = backgroundColor.blended(withFraction: 0.35,
-                                    of: parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: marker)
-                } else {
-                    hideText(in: textStorage, range: marker, backgroundColor: backgroundColor)
-                }
-            }
-        }
-
-        // Apply bullet list formatting: - item
-        private func applyBulletLists(in textStorage: NSTextStorage, string: String, baseFontSize: CGFloat,
-                                      cursorLocation: Int, backgroundColor: NSColor) {
-            guard let regex = try? NSRegularExpression(pattern: #"^(- )(.+)$"#, options: .anchorsMatchLines) else { return }
-            let range = NSRange(location: 0, length: (string as NSString).length)
-
-            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-                guard let match = match, match.numberOfRanges >= 3 else { return }
-
-                let fullRange = match.range
-                let marker = match.range(at: 1)
-
-                // Hide marker and use bullet character or indent
-                if shouldRevealSyntax(at: fullRange, cursorLocation: cursorLocation) {
-                    let mutedColor = backgroundColor.blended(withFraction: 0.35,
-                                    of: parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: marker)
-                } else {
-                    // Replace visual appearance with bullet point
-                    // We can't actually replace text, so we'll just hide the dash
-                    // and add a bullet via paragraph style
-                    let bulletParagraph = NSMutableParagraphStyle()
-                    bulletParagraph.lineSpacing = CGFloat(parent.lineSpacing)
-                    bulletParagraph.firstLineHeadIndent = 20
-                    bulletParagraph.headIndent = 20
-
-                    // Create tab stop for bullet
-                    let tabStop = NSTextTab(textAlignment: .left, location: 20)
-                    bulletParagraph.tabStops = [tabStop]
-
-                    textStorage.addAttribute(.paragraphStyle, value: bulletParagraph, range: fullRange)
-
-                    // Hide just the dash, show bullet-like appearance
-                    let mutedColor = backgroundColor.blended(withFraction: 0.5,
-                                    of: parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: NSRange(location: marker.location, length: 1))
-                    hideText(in: textStorage, range: NSRange(location: marker.location + 1, length: 1), backgroundColor: backgroundColor)
-                }
-            }
-        }
-
-        // Apply numbered list formatting: 1. item
-        private func applyNumberedLists(in textStorage: NSTextStorage, string: String, baseFontSize: CGFloat,
-                                        cursorLocation: Int, backgroundColor: NSColor) {
-            guard let regex = try? NSRegularExpression(pattern: #"^(\d+\. )(.+)$"#, options: .anchorsMatchLines) else { return }
-            let range = NSRange(location: 0, length: (string as NSString).length)
-
-            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-                guard let match = match, match.numberOfRanges >= 3 else { return }
-
-                let fullRange = match.range
-                let marker = match.range(at: 1)
-
-                // Style the number slightly muted when not editing
-                if shouldRevealSyntax(at: fullRange, cursorLocation: cursorLocation) {
-                    // Keep visible when editing
-                } else {
-                    let mutedColor = backgroundColor.blended(withFraction: 0.5,
-                                    of: parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: marker)
-
-                    // Add indentation
-                    let listParagraph = NSMutableParagraphStyle()
-                    listParagraph.lineSpacing = CGFloat(parent.lineSpacing)
-                    listParagraph.firstLineHeadIndent = 0
-                    listParagraph.headIndent = 24
-                    textStorage.addAttribute(.paragraphStyle, value: listParagraph, range: fullRange)
-                }
-            }
-        }
-
-        // Apply strikethrough: ~~text~~
-        private func applyStrikethrough(in textStorage: NSTextStorage, string: String, baseFontSize: CGFloat,
-                                        cursorLocation: Int, backgroundColor: NSColor) {
-            guard let regex = try? NSRegularExpression(pattern: #"(~~)([^~]+)(~~)"#, options: []) else { return }
-            let range = NSRange(location: 0, length: (string as NSString).length)
-
-            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-                guard let match = match, match.numberOfRanges >= 4 else { return }
-
-                let fullRange = match.range
-                let openMarker = match.range(at: 1)
-                let content = match.range(at: 2)
-                let closeMarker = match.range(at: 3)
-
-                // Apply strikethrough to content
-                textStorage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: content)
-
-                // Hide or show markers
-                if self.shouldRevealInlineSyntax(fullRange: fullRange, contentRange: content, cursorLocation: cursorLocation) {
-                    let mutedColor = backgroundColor.blended(withFraction: 0.35,
-                                    of: self.parent.darkMode ? .white : .black) ?? .gray
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: openMarker)
-                    textStorage.addAttribute(.foregroundColor, value: mutedColor, range: closeMarker)
-                } else {
-                    self.hideText(in: textStorage, range: openMarker, backgroundColor: backgroundColor)
-                    self.hideText(in: textStorage, range: closeMarker, backgroundColor: backgroundColor)
-                }
-            }
-        }
     }
 }
 
 #Preview {
-    ContentView(document: .constant(JustWriteDocument(text: "# Welcome to JustWrite\n\nStart writing...")))
+    ContentView(document: .constant(JustWriteDocument()))
 }
