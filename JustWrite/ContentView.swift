@@ -201,9 +201,18 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("flushPendingChanges"))) { _ in
             // Force flush pending changes (called on app termination)
-            documentState.flushPendingChanges { [self] text in
-                document.text = text
+            // Sync textView content directly to document binding
+            if let textView = NSApp.keyWindow?.contentView?.subviews
+                .compactMap({ $0 as? NSScrollView })
+                .first?.documentView as? NSTextView,
+               let textStorage = textView.textStorage {
+                document.attributedText = NSAttributedString(attributedString: textStorage)
             }
+
+            documentState.flushPendingChanges { _ in
+                // Already synced above
+            }
+
             if let currentDoc = NSDocumentController.shared.currentDocument,
                currentDoc.fileURL != nil {
                 currentDoc.save(nil)
@@ -213,18 +222,7 @@ struct ContentView: View {
     }
 
     private func createNewNote() {
-        // SAVE FIRST - never lose work
-        documentState.flushPendingChanges { [self] text in
-            document.text = text
-        }
-
-        // Save current document if it has a URL
-        if let currentDoc = NSDocumentController.shared.currentDocument,
-           currentDoc.fileURL != nil {
-            currentDoc.save(nil)
-        }
-
-        // Get notes folder
+        // Get notes folder first
         guard let notesFolder = getNotesFolder() else {
             // No notes folder set - just clear the editor
             document.text = ""
@@ -237,37 +235,72 @@ struct ContentView: View {
             return
         }
 
+        guard let currentDoc = NSDocumentController.shared.currentDocument else { return }
+
+        // SAVE FIRST - Sync textView content to document binding
+        // Get the current attributed text from the textView via the Coordinator
+        if let textView = NSApp.keyWindow?.contentView?.subviews
+            .compactMap({ $0 as? NSScrollView })
+            .first?.documentView as? NSTextView,
+           let textStorage = textView.textStorage {
+            // Directly sync the attributed text to ensure we save the latest content
+            document.attributedText = NSAttributedString(attributedString: textStorage)
+        }
+
+        // Flush any pending state
+        documentState.flushPendingChanges { [self] _ in
+            // Already synced above, nothing more needed
+        }
+
+        // Save current document if it has a URL, then create new note
+        if let currentURL = currentDoc.fileURL {
+            // Save to current URL first, then create new file
+            currentDoc.save(to: currentURL, ofType: "public.rtf", for: .saveOperation) { [self] saveError in
+                if saveError != nil {
+                    // Save failed, but continue to create new note
+                    print("Warning: Failed to save current document before creating new note")
+                }
+
+                DispatchQueue.main.async { [self] in
+                    self.createNewFile(in: notesFolder, using: currentDoc)
+                }
+            }
+        } else {
+            // No existing file, just create new one
+            createNewFile(in: notesFolder, using: currentDoc)
+        }
+    }
+
+    private func createNewFile(in notesFolder: URL, using currentDoc: NSDocument) {
         // Generate unique filename
         let newFileName = generateUniqueFilename(in: notesFolder)
         let newFileURL = notesFolder.appendingPathComponent(newFileName)
 
-        // Clear the document text first
+        // Clear the document text for the new file
         document.text = ""
         documentState.resetForNewDocument(text: "")
 
-        // Use save(to:) to create the new file - this lets NSDocument handle file creation properly
-        if let currentDoc = NSDocumentController.shared.currentDocument {
-            currentDoc.save(to: newFileURL, ofType: "public.rtf", for: .saveAsOperation) { error in
-                if error != nil {
-                    // Failed - reset to untitled
-                    DispatchQueue.main.async {
-                        currentDoc.fileURL = nil
-                        NSApp.keyWindow?.title = "Untitled"
-                    }
-                    return
+        // Save empty content to new file
+        currentDoc.save(to: newFileURL, ofType: "public.rtf", for: .saveAsOperation) { error in
+            if error != nil {
+                // Failed - reset to untitled
+                DispatchQueue.main.async {
+                    currentDoc.fileURL = nil
+                    NSApp.keyWindow?.title = "Untitled"
                 }
+                return
+            }
 
-                DispatchQueue.main.async { [self] in
-                    documentState.setCurrentDocumentURL(newFileURL)
+            DispatchQueue.main.async { [self] in
+                documentState.setCurrentDocumentURL(newFileURL)
 
-                    // Update window title (without .rtf extension)
-                    let displayName = newFileURL.deletingPathExtension().lastPathComponent
-                    NSApp.keyWindow?.title = displayName
+                // Update window title (without .rtf extension)
+                let displayName = newFileURL.deletingPathExtension().lastPathComponent
+                NSApp.keyWindow?.title = displayName
 
-                    // Notify that current document changed and refresh sidebar
-                    NotificationCenter.default.post(name: .currentDocumentChanged, object: newFileURL)
-                    NotificationCenter.default.post(name: .notesFolderChanged, object: nil)
-                }
+                // Notify that current document changed and refresh sidebar
+                NotificationCenter.default.post(name: .currentDocumentChanged, object: newFileURL)
+                NotificationCenter.default.post(name: .notesFolderChanged, object: nil)
             }
         }
     }
@@ -306,9 +339,16 @@ struct ContentView: View {
     private func loadNote(from url: URL) {
         guard let currentDoc = NSDocumentController.shared.currentDocument else { return }
 
-        // SAVE FIRST - never lose work
-        documentState.flushPendingChanges { [self] text in
-            document.text = text
+        // SAVE FIRST - Sync textView content directly to document binding
+        if let textView = NSApp.keyWindow?.contentView?.subviews
+            .compactMap({ $0 as? NSScrollView })
+            .first?.documentView as? NSTextView,
+           let textStorage = textView.textStorage {
+            document.attributedText = NSAttributedString(attributedString: textStorage)
+        }
+
+        documentState.flushPendingChanges { _ in
+            // Already synced above
         }
 
         // Save current document if it has unsaved changes and a URL
@@ -1363,6 +1403,62 @@ class SmoothCursorTextView: NSTextView {
         blinkTimer?.invalidate()
         cursorLayer?.isHidden = true
         return result
+    }
+
+    // MARK: - Paste/Cut/Delete Operations
+
+    override func paste(_ sender: Any?) {
+        super.paste(sender)
+        // Update cursor position after paste
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
+    }
+
+    override func pasteAsPlainText(_ sender: Any?) {
+        super.pasteAsPlainText(sender)
+        // Update cursor position after paste
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
+    }
+
+    override func cut(_ sender: Any?) {
+        super.cut(sender)
+        // Update cursor position after cut
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
+    }
+
+    override func delete(_ sender: Any?) {
+        super.delete(sender)
+        // Update cursor position after delete
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
+    }
+
+    override func deleteBackward(_ sender: Any?) {
+        super.deleteBackward(sender)
+        // Update cursor position after delete
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
+    }
+
+    override func deleteForward(_ sender: Any?) {
+        super.deleteForward(sender)
+        // Update cursor position after delete
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
     }
 
     override func viewDidMoveToWindow() {

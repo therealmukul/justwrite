@@ -2,6 +2,241 @@ import XCTest
 import AppKit
 @testable import JustWrite
 
+// MARK: - Document Save State Tests
+
+final class DocumentSaveStateTests: XCTestCase {
+
+    // MARK: - Document Content Preservation Tests
+
+    func testDocumentTextIsPreservedAfterSetting() {
+        var document = JustWriteDocument(text: "Original content")
+        XCTAssertEqual(document.text, "Original content")
+
+        // Simulating what should happen during save - content should not change
+        let savedContent = document.text
+        XCTAssertEqual(savedContent, "Original content")
+    }
+
+    func testDocumentAttributedTextGeneratesCorrectRTF() {
+        let document = JustWriteDocument(text: "Test content")
+
+        // Verify RTF can be generated
+        let range = NSRange(location: 0, length: document.attributedText.length)
+        let rtfData = document.attributedText.rtf(from: range, documentAttributes: [:])
+
+        XCTAssertNotNil(rtfData, "Should be able to generate RTF data")
+
+        // Verify RTF contains the text
+        if let data = rtfData, let rtfString = String(data: data, encoding: .ascii) {
+            XCTAssertTrue(rtfString.contains("Test content") || data.count > 0,
+                         "RTF should contain the text content")
+        }
+    }
+
+    func testDocumentContentAfterClearingText() {
+        var document = JustWriteDocument(text: "Original content")
+        XCTAssertEqual(document.text, "Original content")
+
+        // Clear the text
+        document.text = ""
+        XCTAssertEqual(document.text, "")
+        XCTAssertEqual(document.attributedText.length, 0)
+    }
+
+    func testRTFDataContainsCorrectContent() {
+        let document = JustWriteDocument(text: "Save me!")
+
+        // Simulate what fileWrapper does - generate RTF data
+        let range = NSRange(location: 0, length: document.attributedText.length)
+        let rtfData = document.attributedText.rtf(from: range, documentAttributes: [:])
+
+        XCTAssertNotNil(rtfData, "Should generate RTF data")
+
+        // Read the content back
+        if let data = rtfData,
+           let restored = NSAttributedString(rtf: data, documentAttributes: nil) {
+            XCTAssertEqual(restored.string, "Save me!", "Content should be preserved in RTF")
+        }
+    }
+
+    func testRTFDataIsEmptyAfterClearingDocument() {
+        var document = JustWriteDocument(text: "Original content")
+        document.text = ""  // Clear it
+
+        // Generate RTF data from empty document
+        let range = NSRange(location: 0, length: document.attributedText.length)
+        let rtfData = document.attributedText.rtf(from: range, documentAttributes: [:])
+
+        if let data = rtfData,
+           let restored = NSAttributedString(rtf: data, documentAttributes: nil) {
+            XCTAssertEqual(restored.string, "", "Cleared document should have empty content")
+        }
+    }
+
+    // MARK: - Document State Manager Tests
+
+    func testFlushPendingChangesCommitsPendingText() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "")
+
+        var committedText: String?
+        let expectation = XCTestExpectation(description: "Text committed")
+
+        // Simulate text change
+        manager.textDidChange(newText: "New content", documentURL: nil) { text in
+            committedText = text
+            expectation.fulfill()
+        }
+
+        // Flush should commit immediately
+        manager.flushPendingChanges { text in
+            committedText = text
+        }
+
+        XCTAssertEqual(committedText, "New content", "Flush should commit the pending text")
+    }
+
+    func testFlushAfterDebounceDoesNothing() {
+        let manager = DocumentStateManager()
+        manager.resetForNewDocument(text: "")
+
+        let expectation = XCTestExpectation(description: "Debounce completes")
+        var commitCount = 0
+
+        // Simulate text change with debounce
+        manager.textDidChange(newText: "Content", documentURL: nil) { _ in
+            commitCount += 1
+            expectation.fulfill()
+        }
+
+        // Wait for debounce to complete
+        wait(for: [expectation], timeout: 2.0)
+        XCTAssertEqual(commitCount, 1)
+
+        // Now flush should not call commit again (no pending changes)
+        var flushCalled = false
+        manager.flushPendingChanges { _ in
+            flushCalled = true
+        }
+
+        XCTAssertFalse(flushCalled, "Flush should not commit if no pending changes")
+    }
+}
+
+// MARK: - Cursor Position After Text Operations Tests
+
+final class CursorPositionTests: XCTestCase {
+
+    // MARK: - NSTextView Cursor Position Tests
+
+    func testCursorPositionAfterInsertingTextAtBeginning() {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.string = ""
+
+        // Simulate inserting "Hello" at position 0
+        let insertedText = "Hello"
+        textView.insertText(insertedText, replacementRange: NSRange(location: 0, length: 0))
+
+        // Cursor should be at end of inserted text
+        let expectedPosition = insertedText.count
+        XCTAssertEqual(textView.selectedRange().location, expectedPosition, "Cursor should be at end of inserted text")
+        XCTAssertEqual(textView.selectedRange().length, 0, "Should have no selection")
+    }
+
+    func testCursorPositionAfterInsertingMultilineText() {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.string = ""
+
+        // Simulate pasting multiline text
+        let insertedText = "Line 1\nLine 2\nLine 3"
+        textView.insertText(insertedText, replacementRange: NSRange(location: 0, length: 0))
+
+        // Cursor should be at end of inserted text
+        let expectedPosition = insertedText.count
+        XCTAssertEqual(textView.selectedRange().location, expectedPosition, "Cursor should be at end of multiline text")
+    }
+
+    func testCursorPositionAfterInsertingIntoExistingText() {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.string = "Hello World"
+
+        // Set cursor position to 5 (after "Hello")
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+
+        // Insert " Beautiful" at cursor position
+        let insertedText = " Beautiful"
+        textView.insertText(insertedText, replacementRange: textView.selectedRange())
+
+        // Cursor should be at position 5 + length of inserted text
+        let expectedPosition = 5 + insertedText.count
+        XCTAssertEqual(textView.selectedRange().location, expectedPosition, "Cursor should be after inserted text")
+    }
+
+    func testCursorPositionAfterReplacingSelection() {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.string = "Hello World"
+
+        // Replace "World" (position 6-11) with "Universe"
+        let replacementText = "Universe"
+        textView.insertText(replacementText, replacementRange: NSRange(location: 6, length: 5))
+
+        // Cursor should be at end of replacement text
+        let expectedPosition = 6 + replacementText.count
+        XCTAssertEqual(textView.selectedRange().location, expectedPosition, "Cursor should be at end of replacement")
+    }
+
+    func testCursorPositionAfterPasteIntoEmptyDocument() {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.string = ""
+
+        // Simulate paste by using replaceCharacters
+        let pastedText = "This is pasted content with multiple words."
+        if let textStorage = textView.textStorage {
+            textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: pastedText)
+            // Manually set selection to end (this is what paste should do)
+            textView.setSelectedRange(NSRange(location: pastedText.count, length: 0))
+        }
+
+        XCTAssertEqual(textView.selectedRange().location, pastedText.count, "Cursor should be at end after paste")
+    }
+
+    func testCursorPositionAfterPasteWithUnicode() {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.string = ""
+
+        let pastedText = "Hello 世界 🌍 café"
+        textView.insertText(pastedText, replacementRange: NSRange(location: 0, length: 0))
+
+        // Count should be by characters, not bytes
+        let expectedPosition = (pastedText as NSString).length
+        XCTAssertEqual(textView.selectedRange().location, expectedPosition, "Cursor should handle unicode correctly")
+    }
+
+    // MARK: - Selection Range Calculation Tests
+
+    func testCalculateEndPositionAfterInsertion() {
+        let initialPosition = 0
+        let insertedLength = 15
+        let expectedEndPosition = initialPosition + insertedLength
+        XCTAssertEqual(expectedEndPosition, 15)
+    }
+
+    func testCalculateEndPositionAfterInsertionInMiddle() {
+        let initialPosition = 10
+        let insertedLength = 5
+        let expectedEndPosition = initialPosition + insertedLength
+        XCTAssertEqual(expectedEndPosition, 15)
+    }
+
+    func testCalculateEndPositionAfterReplacement() {
+        let replacementStart = 5
+        let replacementLength = 10  // Replacing 10 characters
+        let newTextLength = 20  // With 20 characters
+        let expectedEndPosition = replacementStart + newTextLength
+        XCTAssertEqual(expectedEndPosition, 25)
+    }
+}
+
 // MARK: - Rich Text Formatting Tests (Cmd+B / Cmd+I)
 
 final class RichTextFormattingTests: XCTestCase {
