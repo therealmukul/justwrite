@@ -73,7 +73,7 @@ struct FormatButton: View {
 
 
 struct ContentView: View {
-    @EnvironmentObject var documentManager: JustWriteDocumentManager
+    @EnvironmentObject var documentManager: TinyWriterDocumentManager
     @State private var showSidebar = false
     @State private var showSettings = false
     @AppStorage("fontSize") private var fontSize: Double = 16
@@ -190,10 +190,10 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openNoteRequest)) { notification in
             guard let url = notification.object as? URL else { return }
-            documentManager.openJustWriteDocument(at: url)
+            documentManager.openTinyWriterDocument(at: url)
         }
         .onReceive(NotificationCenter.default.publisher(for: .newNoteRequest)) { _ in
-            documentManager.createNewJustWriteDocument()
+            documentManager.createNewTinyWriterDocument()
         }
         .onChange(of: documentManager.activeDocument?.hasUnautosavedChanges) { _, hasChanges in
             // Update window title to show unsaved indicator
@@ -1802,5 +1802,5 @@ struct RichTextView: NSViewRepresentable {
 
 #Preview {
     ContentView()
-        .environmentObject(JustWriteDocumentManager())
+        .environmentObject(TinyWriterDocumentManager())
 }

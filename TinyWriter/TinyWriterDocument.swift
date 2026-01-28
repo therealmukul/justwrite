@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
 
-class JustWriteDocument: NSDocument, ObservableObject {
+class TinyWriterDocument: NSDocument, ObservableObject {
     /// Internal storage for attributed text
     private var _attributedText: NSAttributedString = NSAttributedString()
 

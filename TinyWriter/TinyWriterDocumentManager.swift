@@ -3,15 +3,15 @@ import SwiftUI
 import Combine
 import UniformTypeIdentifiers
 
-/// Manages document lifecycle for JustWrite.
+/// Manages document lifecycle for TinyWriter.
 /// Subclasses NSDocumentController to provide proper document handling
 /// while maintaining a single-window UI.
-class JustWriteDocumentManager: NSDocumentController, ObservableObject {
+class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
 
     // MARK: - Published State
 
     /// The currently active document displayed in the editor
-    @Published var activeDocument: JustWriteDocument?
+    @Published var activeDocument: TinyWriterDocument?
 
     /// URL of the notes folder
     @Published var notesFolder: URL?
@@ -19,7 +19,7 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
     // MARK: - Private State
 
     /// Cache of open documents by URL
-    private var openDocuments: [URL: JustWriteDocument] = [:]
+    private var openDocuments: [URL: TinyWriterDocument] = [:]
 
     /// Cancellables for Combine subscriptions
     private var cancellables = Set<AnyCancellable>()
@@ -57,7 +57,7 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
 
     /// Opens a document at the given URL, switching to it as the active document.
     /// If the document is already open, switches to the cached instance.
-    func openJustWriteDocument(at url: URL, completion: ((JustWriteDocument?) -> Void)? = nil) {
+    func openTinyWriterDocument(at url: URL, completion: ((TinyWriterDocument?) -> Void)? = nil) {
         // Save current document if it has unsaved changes
         saveCurrentDocumentIfNeeded()
 
@@ -80,8 +80,8 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
                 return
             }
 
-            guard let justWriteDoc = document as? JustWriteDocument else {
-                print("Document is not a JustWriteDocument")
+            guard let justWriteDoc = document as? TinyWriterDocument else {
+                print("Document is not a TinyWriterDocument")
                 DispatchQueue.main.async {
                     completion?(nil)
                 }
@@ -100,13 +100,13 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
     // MARK: - Document Creation
 
     /// Creates a new document in the notes folder.
-    func createNewJustWriteDocument(completion: ((JustWriteDocument?) -> Void)? = nil) {
+    func createNewTinyWriterDocument(completion: ((TinyWriterDocument?) -> Void)? = nil) {
         // Save current document first
         saveCurrentDocumentIfNeeded()
 
         guard let folder = notesFolder else {
             // No notes folder - create untitled document
-            createUntitledJustWriteDocument(completion: completion)
+            createUntitledTinyWriterDocument(completion: completion)
             return
         }
 
@@ -115,7 +115,7 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
         let fileURL = folder.appendingPathComponent(filename)
 
         // Create new document
-        let newDocument = JustWriteDocument()
+        let newDocument = TinyWriterDocument()
         addDocument(newDocument)
 
         // Save to the new location
@@ -142,8 +142,8 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
     }
 
     /// Creates an untitled document (when no notes folder is set).
-    private func createUntitledJustWriteDocument(completion: ((JustWriteDocument?) -> Void)? = nil) {
-        let newDocument = JustWriteDocument()
+    private func createUntitledTinyWriterDocument(completion: ((TinyWriterDocument?) -> Void)? = nil) {
+        let newDocument = TinyWriterDocument()
         addDocument(newDocument)
         switchToDocument(newDocument)
         completion?(newDocument)
@@ -152,7 +152,7 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
     // MARK: - Document Switching
 
     /// Switches to the given document, making it the active document.
-    private func switchToDocument(_ document: JustWriteDocument) {
+    private func switchToDocument(_ document: TinyWriterDocument) {
         DispatchQueue.main.async {
             self.activeDocument = document
 
@@ -201,7 +201,7 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
     // MARK: - Document Closing
 
     /// Closes a document and removes it from the cache.
-    func closeJustWriteDocument(_ document: JustWriteDocument) {
+    func closeTinyWriterDocument(_ document: TinyWriterDocument) {
         // Save if needed
         if document.hasUnautosavedChanges {
             document.save(nil)
@@ -246,7 +246,7 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
 
     /// Override to return our custom document class.
     override var documentClassNames: [String] {
-        return ["JustWriteDocument"]
+        return ["TinyWriterDocument"]
     }
 
     override var defaultType: String? {
@@ -254,12 +254,12 @@ class JustWriteDocumentManager: NSDocumentController, ObservableObject {
     }
 
     override func documentClass(forType typeName: String) -> AnyClass? {
-        return JustWriteDocument.self
+        return TinyWriterDocument.self
     }
 
     /// Override to prevent NSDocumentController from creating windows.
     override func openUntitledDocumentAndDisplay(_ displayDocument: Bool) throws -> NSDocument {
-        let document = JustWriteDocument()
+        let document = TinyWriterDocument()
         addDocument(document)
         switchToDocument(document)
         return document

@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>JustWrite</string>
+	<string>TinyWriter</string>
 	<key>CFBundleDisplayName</key>
-	<string>JustWrite</string>
+	<string>TinyWriter</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleVersion</key>

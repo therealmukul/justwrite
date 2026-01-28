@@ -1,7 +1,7 @@
 import XCTest
 import AppKit
 import UniformTypeIdentifiers
-@testable import JustWrite
+@testable import TinyWriter
 
 // MARK: - Window Reopen Behavior Tests
 
@@ -70,17 +70,17 @@ final class AppLaunchBehaviorTests: XCTestCase {
 
     func testNewDocumentStartsWithEmptyText() {
         // When app launches, a new document should have empty text
-        let document = JustWriteDocument()
+        let document = TinyWriterDocument()
         XCTAssertEqual(document.text, "", "New document should start with empty text")
     }
 
     func testNewDocumentHasEmptyAttributedText() {
-        let document = JustWriteDocument()
+        let document = TinyWriterDocument()
         XCTAssertEqual(document.attributedText.length, 0, "New document should have empty attributed text")
     }
 
     func testNewDocumentIsReadyForEditing() {
-        let document = JustWriteDocument()
+        let document = TinyWriterDocument()
         // Document should be in a state ready for user to start typing
         XCTAssertEqual(document.text, "")
         XCTAssertNotNil(document.attributedText)
@@ -89,12 +89,12 @@ final class AppLaunchBehaviorTests: XCTestCase {
     // MARK: - Document Initialization Tests
 
     func testDocumentWithTextInitializesCorrectly() {
-        let document = JustWriteDocument(text: "Hello")
+        let document = TinyWriterDocument(text: "Hello")
         XCTAssertEqual(document.text, "Hello")
     }
 
     func testEmptyDocumentTextProperty() {
-        let document = JustWriteDocument()
+        let document = TinyWriterDocument()
         // Setting text on empty document should work
         var mutableDoc = document
         mutableDoc.text = "New content"
@@ -122,7 +122,7 @@ final class AppLaunchBehaviorTests: XCTestCase {
 
         // The value might exist but app behavior should be to create new note
         // We can't test the full app launch here, but we verify the document starts fresh
-        let newDocument = JustWriteDocument()
+        let newDocument = TinyWriterDocument()
         XCTAssertEqual(newDocument.text, "", "App should always start with fresh empty document")
 
         // Cleanup
@@ -137,7 +137,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
     // MARK: - Change Tracking Tests
 
     func testDocumentMarksItselfDirtyWhenTextChanges() {
-        let document = JustWriteDocument()
+        let document = TinyWriterDocument()
 
         // Give document a file URL (NSDocument needs this for change tracking)
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).rtf")
@@ -154,7 +154,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
     }
 
     func testDocumentMarksItselfDirtyWhenAttributedTextChanges() {
-        let document = JustWriteDocument()
+        let document = TinyWriterDocument()
 
         // Give document a file URL (NSDocument needs this for change tracking)
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).rtf")
@@ -174,7 +174,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
     // MARK: - Data Generation Tests
 
     func testDataOfTypeReturnsCurrentContent() throws {
-        let document = JustWriteDocument(text: "Test content for saving")
+        let document = TinyWriterDocument(text: "Test content for saving")
 
         // Get the data that would be saved
         let data = try document.data(ofType: UTType.rtf.identifier)
@@ -191,7 +191,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
     }
 
     func testDataOfTypeReturnsLatestContent() throws {
-        let document = JustWriteDocument(text: "Initial content")
+        let document = TinyWriterDocument(text: "Initial content")
 
         // Change the text
         document.text = "Updated content"
@@ -218,12 +218,12 @@ final class DocumentSaveLifecycleTests: XCTestCase {
         }
 
         // Create and save a document first
-        let originalDoc = JustWriteDocument(text: "Test content")
+        let originalDoc = TinyWriterDocument(text: "Test content")
         let saveData = try originalDoc.data(ofType: UTType.rtf.identifier)
         try saveData.write(to: testFileURL)
 
         // Create new document and load
-        let loadedDoc = JustWriteDocument()
+        let loadedDoc = TinyWriterDocument()
         loadedDoc.fileURL = testFileURL
         let loadedData = try Data(contentsOf: testFileURL)
         try loadedDoc.read(from: loadedData, ofType: UTType.rtf.identifier)
@@ -249,12 +249,12 @@ final class DocumentSaveLifecycleTests: XCTestCase {
         }
 
         // Create empty document and save
-        let originalDoc = JustWriteDocument()
+        let originalDoc = TinyWriterDocument()
         let saveData = try originalDoc.data(ofType: UTType.rtf.identifier)
         try saveData.write(to: testFileURL)
 
         // Load into new document
-        let loadedDoc = JustWriteDocument()
+        let loadedDoc = TinyWriterDocument()
         loadedDoc.fileURL = testFileURL
         let loadedData = try Data(contentsOf: testFileURL)
         try loadedDoc.read(from: loadedData, ofType: UTType.rtf.identifier)
@@ -272,7 +272,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
     // MARK: - Formatting Change Tests
 
     func testFormattingOnlyChangesMarkDocumentDirty() {
-        let document = JustWriteDocument(text: "Hello")
+        let document = TinyWriterDocument(text: "Hello")
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_fmt_\(UUID().uuidString).rtf")
         document.fileURL = tempURL
 
@@ -296,7 +296,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
     }
 
     func testItalicFormattingChangesMarkDocumentDirty() {
-        let document = JustWriteDocument(text: "World")
+        let document = TinyWriterDocument(text: "World")
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_italic_\(UUID().uuidString).rtf")
         document.fileURL = tempURL
 
@@ -328,7 +328,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
         }
 
         // Create document with content
-        let document = JustWriteDocument(text: "Content to preserve")
+        let document = TinyWriterDocument(text: "Content to preserve")
 
         // Get save data
         let saveData = try document.data(ofType: UTType.rtf.identifier)
@@ -337,7 +337,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
         try saveData.write(to: testFileURL)
 
         // Create new document and load
-        let loadedDocument = JustWriteDocument()
+        let loadedDocument = TinyWriterDocument()
         let loadedData = try Data(contentsOf: testFileURL)
         try loadedDocument.read(from: loadedData, ofType: UTType.rtf.identifier)
 
@@ -353,7 +353,7 @@ final class DocumentSaveLifecycleTests: XCTestCase {
     }
 
     func testMultipleEditsPreservedOnSave() throws {
-        let document = JustWriteDocument(text: "First")
+        let document = TinyWriterDocument(text: "First")
 
         // Make multiple edits
         document.text = "Second"
@@ -386,7 +386,7 @@ final class SaveSynchronizationTests: XCTestCase {
         }
 
         // Create a document with content
-        let document = JustWriteDocument(text: "Initial content")
+        let document = TinyWriterDocument(text: "Initial content")
         document.fileURL = testFileURL
 
         // Save it once to establish the file
@@ -426,7 +426,7 @@ final class SaveSynchronizationTests: XCTestCase {
         }
 
         // Create document with plain text
-        let document = JustWriteDocument(text: "Bold text")
+        let document = TinyWriterDocument(text: "Bold text")
         document.fileURL = testFileURL
 
         // Apply bold formatting
@@ -472,7 +472,7 @@ final class DocumentSaveStateTests: XCTestCase {
     // MARK: - Document Content Preservation Tests
 
     func testDocumentTextIsPreservedAfterSetting() {
-        var document = JustWriteDocument(text: "Original content")
+        var document = TinyWriterDocument(text: "Original content")
         XCTAssertEqual(document.text, "Original content")
 
         // Simulating what should happen during save - content should not change
@@ -481,7 +481,7 @@ final class DocumentSaveStateTests: XCTestCase {
     }
 
     func testDocumentAttributedTextGeneratesCorrectRTF() {
-        let document = JustWriteDocument(text: "Test content")
+        let document = TinyWriterDocument(text: "Test content")
 
         // Verify RTF can be generated
         let range = NSRange(location: 0, length: document.attributedText.length)
@@ -497,7 +497,7 @@ final class DocumentSaveStateTests: XCTestCase {
     }
 
     func testDocumentContentAfterClearingText() {
-        var document = JustWriteDocument(text: "Original content")
+        var document = TinyWriterDocument(text: "Original content")
         XCTAssertEqual(document.text, "Original content")
 
         // Clear the text
@@ -507,7 +507,7 @@ final class DocumentSaveStateTests: XCTestCase {
     }
 
     func testRTFDataContainsCorrectContent() {
-        let document = JustWriteDocument(text: "Save me!")
+        let document = TinyWriterDocument(text: "Save me!")
 
         // Simulate what fileWrapper does - generate RTF data
         let range = NSRange(location: 0, length: document.attributedText.length)
@@ -523,7 +523,7 @@ final class DocumentSaveStateTests: XCTestCase {
     }
 
     func testRTFDataIsEmptyAfterClearingDocument() {
-        var document = JustWriteDocument(text: "Original content")
+        var document = TinyWriterDocument(text: "Original content")
         document.text = ""  // Clear it
 
         // Generate RTF data from empty document
@@ -914,17 +914,17 @@ final class RichTextFormattingTests: XCTestCase {
     }
 }
 
-final class JustWriteDocumentTests: XCTestCase {
+final class TinyWriterDocumentTests: XCTestCase {
 
     // MARK: - Document Creation Tests
 
     func testDocumentInitializesWithEmptyText() {
-        let document = JustWriteDocument()
+        let document = TinyWriterDocument()
         XCTAssertEqual(document.text, "")
     }
 
     func testDocumentInitializesWithProvidedText() {
-        let document = JustWriteDocument(text: "Hello, World!")
+        let document = TinyWriterDocument(text: "Hello, World!")
         XCTAssertEqual(document.text, "Hello, World!")
     }
 
@@ -937,31 +937,31 @@ final class JustWriteDocumentTests: XCTestCase {
         - List item 1
         - List item 2
         """
-        let document = JustWriteDocument(text: multilineText)
+        let document = TinyWriterDocument(text: multilineText)
         XCTAssertEqual(document.text, multilineText)
     }
 
     func testDocumentPreservesUnicodeText() {
         let unicodeText = "Hello 世界 🌍 émojis café"
-        let document = JustWriteDocument(text: unicodeText)
+        let document = TinyWriterDocument(text: unicodeText)
         XCTAssertEqual(document.text, unicodeText)
     }
 
     func testDocumentTextIsMutable() {
-        var document = JustWriteDocument(text: "Initial")
+        var document = TinyWriterDocument(text: "Initial")
         document.text = "Modified"
         XCTAssertEqual(document.text, "Modified")
     }
 
     func testDocumentHandlesLongText() {
         let longText = String(repeating: "A", count: 10000)
-        let document = JustWriteDocument(text: longText)
+        let document = TinyWriterDocument(text: longText)
         XCTAssertEqual(document.text.count, 10000)
     }
 
     func testDocumentHandlesSpecialCharacters() {
         let specialText = "Line1\nLine2\tTabbed\r\nWindows"
-        let document = JustWriteDocument(text: specialText)
+        let document = TinyWriterDocument(text: specialText)
         XCTAssertEqual(document.text, specialText)
     }
 
@@ -998,24 +998,24 @@ final class JustWriteDocumentTests: XCTestCase {
     // MARK: - RTF Document Type Tests
 
     func testDocumentWritableContentTypeIsRTF() {
-        let writableTypes = JustWriteDocument.writableTypes
+        let writableTypes = TinyWriterDocument.writableTypes
         XCTAssertEqual(writableTypes.count, 1, "Should only have one writable type")
         XCTAssertEqual(writableTypes.first, UTType.rtf.identifier, "Writable type should be RTF")
     }
 
     func testDocumentReadableContentTypesIncludeRTF() {
-        let readableTypes = JustWriteDocument.readableTypes
+        let readableTypes = TinyWriterDocument.readableTypes
         XCTAssertTrue(readableTypes.contains(UTType.rtf.identifier), "Should be able to read RTF files")
     }
 
     func testDocumentReadableContentTypesIncludePlainText() {
-        let readableTypes = JustWriteDocument.readableTypes
+        let readableTypes = TinyWriterDocument.readableTypes
         XCTAssertTrue(readableTypes.contains(UTType.plainText.identifier), "Should be able to read plain text for import")
     }
 
     func testDocumentDoesNotIncludeMarkdownType() {
-        let readableTypes = JustWriteDocument.readableTypes
-        let writableTypes = JustWriteDocument.writableTypes
+        let readableTypes = TinyWriterDocument.readableTypes
+        let writableTypes = TinyWriterDocument.writableTypes
 
         // Verify no markdown types
         for type in readableTypes {
@@ -1029,7 +1029,7 @@ final class JustWriteDocumentTests: XCTestCase {
     // MARK: - RTF Data Round-trip Tests
 
     func testRTFDataRoundTrip() throws {
-        let document = JustWriteDocument(text: "Hello RTF World")
+        let document = TinyWriterDocument(text: "Hello RTF World")
 
         // Get RTF data
         let range = NSRange(location: 0, length: document.attributedText.length)
@@ -1046,7 +1046,7 @@ final class JustWriteDocumentTests: XCTestCase {
 
     func testRTFPreservesUnicodeInRoundTrip() throws {
         let unicodeText = "Hello 世界 🌍 café"
-        let document = JustWriteDocument(text: unicodeText)
+        let document = TinyWriterDocument(text: unicodeText)
 
         let range = NSRange(location: 0, length: document.attributedText.length)
         let rtfData = document.attributedText.rtf(from: range, documentAttributes: [:])
@@ -1946,7 +1946,7 @@ final class DocumentStateManagerTests: XCTestCase {
 
         // Check that no backup directory exists
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let backupDir = appSupport.appendingPathComponent("JustWrite").appendingPathComponent("Backups")
+        let backupDir = appSupport.appendingPathComponent("TinyWriter").appendingPathComponent("Backups")
 
         // If backup dir exists, it should be empty (from previous runs, but this test verifies new behavior)
         if FileManager.default.fileExists(atPath: backupDir.path) {

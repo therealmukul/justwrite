@@ -16,7 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hasLaunched = false
 
     /// Our custom document manager - must be created early to become the shared controller
-    let documentManager = JustWriteDocumentManager()
+    let documentManager = TinyWriterDocumentManager()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Disable tabs - single document at a time
@@ -37,7 +37,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             // Always start with a fresh new note
             DispatchQueue.main.async {
-                self.documentManager.createNewJustWriteDocument()
+                self.documentManager.createNewTinyWriterDocument()
             }
         }
 
@@ -52,7 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func promptForNotesFolder() {
         let panel = NSOpenPanel()
         panel.title = "Choose your Notes Folder"
-        panel.message = "Select a folder where JustWrite will store your notes"
+        panel.message = "Select a folder where TinyWriter will store your notes"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
@@ -61,7 +61,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if panel.runModal() == .OK, let url = panel.url {
             documentManager.setNotesFolder(url)
             NotificationCenter.default.post(name: .notesFolderChanged, object: url)
-            documentManager.createNewJustWriteDocument()
+            documentManager.createNewTinyWriterDocument()
         }
     }
 
@@ -112,7 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create a new document for the new window
         DispatchQueue.main.async {
-            self.documentManager.createNewJustWriteDocument()
+            self.documentManager.createNewTinyWriterDocument()
         }
 
         // Return true so the system creates a new window from WindowGroup
@@ -121,7 +121,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct JustWriteApp: App {
+struct TinyWriterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -134,7 +134,7 @@ struct JustWriteApp: App {
             // Remove the default New menu item and replace with our own
             CommandGroup(replacing: .newItem) {
                 Button("New Note") {
-                    appDelegate.documentManager.createNewJustWriteDocument()
+                    appDelegate.documentManager.createNewTinyWriterDocument()
                 }
                 .keyboardShortcut("n", modifiers: .command)
             }
