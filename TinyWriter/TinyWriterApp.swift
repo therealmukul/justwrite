@@ -1,5 +1,32 @@
 import SwiftUI
 
+// MARK: - Launch Behavior Setting
+
+enum LaunchBehavior: String, CaseIterable {
+    case lastEdited = "lastEdited"
+    case newNote = "newNote"
+
+    var displayName: String {
+        switch self {
+        case .lastEdited: return "Pick up where I left off"
+        case .newNote: return "Create new note"
+        }
+    }
+
+    static var current: LaunchBehavior {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: "launchBehavior"),
+                  let behavior = LaunchBehavior(rawValue: raw) else {
+                return .lastEdited  // Default
+            }
+            return behavior
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "launchBehavior")
+        }
+    }
+}
+
 extension Notification.Name {
     static let toggleSidebar = Notification.Name("toggleSidebar")
     static let notesFolderChanged = Notification.Name("notesFolderChanged")
@@ -9,6 +36,7 @@ extension Notification.Name {
     static let showFormattingToolbar = Notification.Name("showFormattingToolbar")
     static let hideFormattingToolbar = Notification.Name("hideFormattingToolbar")
     static let applyFormatting = Notification.Name("applyFormatting")
+    static let moveCursorToEnd = Notification.Name("moveCursorToEnd")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -32,10 +60,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.promptForNotesFolder()
             }
         } else {
-            // Always start with a fresh new note
             DispatchQueue.main.async {
-                self.documentManager.createNewTinyWriterDocument()
+                self.openBasedOnLaunchBehavior()
             }
+        }
+    }
+
+    /// Opens a document based on user's launch behavior preference
+    private func openBasedOnLaunchBehavior() {
+        switch LaunchBehavior.current {
+        case .lastEdited:
+            // Try to open last edited document
+            if let lastURL = documentManager.lastEditedURL,
+               FileManager.default.fileExists(atPath: lastURL.path) {
+                documentManager.openTinyWriterDocument(at: lastURL) { _ in
+                    // Position cursor at end after document loads
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        NotificationCenter.default.post(name: .moveCursorToEnd, object: nil)
+                    }
+                }
+            } else {
+                // Fall back to creating new note
+                documentManager.createNewTinyWriterDocument()
+            }
+        case .newNote:
+            documentManager.createNewTinyWriterDocument()
         }
     }
 

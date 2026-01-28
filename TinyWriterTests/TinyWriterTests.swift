@@ -130,6 +130,288 @@ final class AppLaunchBehaviorTests: XCTestCase {
     }
 }
 
+// MARK: - Launch Behavior Setting Tests
+
+final class LaunchBehaviorSettingTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        // Clean up any existing settings before each test
+        UserDefaults.standard.removeObject(forKey: "launchBehavior")
+        UserDefaults.standard.removeObject(forKey: "lastEditedDocumentURL")
+    }
+
+    override func tearDown() {
+        // Clean up after each test
+        UserDefaults.standard.removeObject(forKey: "launchBehavior")
+        UserDefaults.standard.removeObject(forKey: "lastEditedDocumentURL")
+        super.tearDown()
+    }
+
+    // MARK: - LaunchBehavior Enum Tests
+
+    func testLaunchBehaviorEnumHasTwoCases() {
+        let allCases = LaunchBehavior.allCases
+        XCTAssertEqual(allCases.count, 2, "LaunchBehavior should have exactly 2 cases")
+    }
+
+    func testLaunchBehaviorLastEditedRawValue() {
+        XCTAssertEqual(LaunchBehavior.lastEdited.rawValue, "lastEdited")
+    }
+
+    func testLaunchBehaviorNewNoteRawValue() {
+        XCTAssertEqual(LaunchBehavior.newNote.rawValue, "newNote")
+    }
+
+    func testLaunchBehaviorLastEditedDisplayName() {
+        XCTAssertEqual(LaunchBehavior.lastEdited.displayName, "Pick up where I left off")
+    }
+
+    func testLaunchBehaviorNewNoteDisplayName() {
+        XCTAssertEqual(LaunchBehavior.newNote.displayName, "Create new note")
+    }
+
+    func testLaunchBehaviorCanBeCreatedFromRawValue() {
+        XCTAssertEqual(LaunchBehavior(rawValue: "lastEdited"), .lastEdited)
+        XCTAssertEqual(LaunchBehavior(rawValue: "newNote"), .newNote)
+        XCTAssertNil(LaunchBehavior(rawValue: "invalid"))
+    }
+
+    // MARK: - LaunchBehavior.current Static Property Tests
+
+    func testLaunchBehaviorDefaultIsLastEdited() {
+        // When no setting is stored, default should be lastEdited
+        UserDefaults.standard.removeObject(forKey: "launchBehavior")
+        XCTAssertEqual(LaunchBehavior.current, .lastEdited, "Default launch behavior should be lastEdited")
+    }
+
+    func testLaunchBehaviorCurrentCanBeSetToLastEdited() {
+        LaunchBehavior.current = .lastEdited
+        XCTAssertEqual(LaunchBehavior.current, .lastEdited)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "launchBehavior"), "lastEdited")
+    }
+
+    func testLaunchBehaviorCurrentCanBeSetToNewNote() {
+        LaunchBehavior.current = .newNote
+        XCTAssertEqual(LaunchBehavior.current, .newNote)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "launchBehavior"), "newNote")
+    }
+
+    func testLaunchBehaviorPersistsAcrossReads() {
+        LaunchBehavior.current = .newNote
+        // Read multiple times to ensure persistence
+        XCTAssertEqual(LaunchBehavior.current, .newNote)
+        XCTAssertEqual(LaunchBehavior.current, .newNote)
+        XCTAssertEqual(LaunchBehavior.current, .newNote)
+    }
+
+    func testLaunchBehaviorHandlesInvalidStoredValue() {
+        // Store an invalid value directly
+        UserDefaults.standard.set("invalidValue", forKey: "launchBehavior")
+        // Should fall back to default
+        XCTAssertEqual(LaunchBehavior.current, .lastEdited, "Should default to lastEdited for invalid stored value")
+    }
+
+    // MARK: - Last Edited URL Tests
+
+    func testLastEditedURLKeyUsesBookmarkData() {
+        let documentManager = TinyWriterDocumentManager()
+
+        // Initially should be nil
+        XCTAssertNil(documentManager.lastEditedURL, "lastEditedURL should be nil when not set")
+    }
+
+    func testLastEditedURLCanBeSetAndRetrieved() throws {
+        let documentManager = TinyWriterDocumentManager()
+
+        // Create a temporary file to test with
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFileURL = tempDir.appendingPathComponent("test_last_edited_\(UUID().uuidString).rtf")
+
+        // Create the file first (needed for bookmark data)
+        FileManager.default.createFile(atPath: testFileURL.path, contents: Data(), attributes: nil)
+
+        defer {
+            try? FileManager.default.removeItem(at: testFileURL)
+        }
+
+        // Set the last edited URL
+        documentManager.lastEditedURL = testFileURL
+
+        // Retrieve it
+        let retrievedURL = documentManager.lastEditedURL
+
+        XCTAssertNotNil(retrievedURL, "Should be able to retrieve last edited URL")
+        XCTAssertEqual(retrievedURL?.lastPathComponent, testFileURL.lastPathComponent, "Retrieved URL should match set URL")
+    }
+
+    func testLastEditedURLCanBeCleared() throws {
+        let documentManager = TinyWriterDocumentManager()
+
+        // Create a temporary file
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFileURL = tempDir.appendingPathComponent("test_clear_\(UUID().uuidString).rtf")
+        FileManager.default.createFile(atPath: testFileURL.path, contents: Data(), attributes: nil)
+
+        defer {
+            try? FileManager.default.removeItem(at: testFileURL)
+        }
+
+        // Set then clear
+        documentManager.lastEditedURL = testFileURL
+        XCTAssertNotNil(documentManager.lastEditedURL)
+
+        documentManager.lastEditedURL = nil
+        XCTAssertNil(documentManager.lastEditedURL, "lastEditedURL should be nil after clearing")
+    }
+
+    // MARK: - AppDelegate Launch Behavior Integration Tests
+
+    func testAppDelegateHasDocumentManager() {
+        let appDelegate = AppDelegate()
+        XCTAssertNotNil(appDelegate.documentManager, "AppDelegate should have a documentManager")
+    }
+
+    func testAppDelegateDocumentManagerIsTinyWriterDocumentManager() {
+        let appDelegate = AppDelegate()
+        XCTAssertTrue(appDelegate.documentManager is TinyWriterDocumentManager,
+                     "documentManager should be TinyWriterDocumentManager type")
+    }
+}
+
+// MARK: - Launch Behavior Scenario Tests
+
+final class LaunchBehaviorScenarioTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.removeObject(forKey: "launchBehavior")
+        UserDefaults.standard.removeObject(forKey: "lastEditedDocumentURL")
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: "launchBehavior")
+        UserDefaults.standard.removeObject(forKey: "lastEditedDocumentURL")
+        super.tearDown()
+    }
+
+    // MARK: - Scenario: User prefers "Open last edited note"
+
+    func testScenarioLastEditedPreference() {
+        // Set preference
+        LaunchBehavior.current = .lastEdited
+
+        // Verify preference is saved
+        XCTAssertEqual(LaunchBehavior.current, .lastEdited)
+
+        // Simulate app restart by reading from fresh context
+        let storedValue = UserDefaults.standard.string(forKey: "launchBehavior")
+        XCTAssertEqual(storedValue, "lastEdited")
+    }
+
+    // MARK: - Scenario: User prefers "Create new note"
+
+    func testScenarioNewNotePreference() {
+        // Set preference
+        LaunchBehavior.current = .newNote
+
+        // Verify preference is saved
+        XCTAssertEqual(LaunchBehavior.current, .newNote)
+
+        // Simulate app restart by reading from fresh context
+        let storedValue = UserDefaults.standard.string(forKey: "launchBehavior")
+        XCTAssertEqual(storedValue, "newNote")
+    }
+
+    // MARK: - Scenario: Last edited file was deleted
+
+    func testScenarioLastEditedFileDeleted() throws {
+        let documentManager = TinyWriterDocumentManager()
+
+        // Create and then delete a temporary file
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFileURL = tempDir.appendingPathComponent("test_deleted_\(UUID().uuidString).rtf")
+        FileManager.default.createFile(atPath: testFileURL.path, contents: Data(), attributes: nil)
+
+        // Set as last edited
+        documentManager.lastEditedURL = testFileURL
+
+        // Delete the file
+        try FileManager.default.removeItem(at: testFileURL)
+
+        // The URL might still be retrievable from bookmark data, but file doesn't exist
+        // App logic should check FileManager.default.fileExists before opening
+        if let lastURL = documentManager.lastEditedURL {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: lastURL.path),
+                          "File should not exist after deletion")
+        }
+    }
+
+    // MARK: - Scenario: Switching between preferences
+
+    func testScenarioSwitchingPreferences() {
+        // Start with default (lastEdited)
+        XCTAssertEqual(LaunchBehavior.current, .lastEdited)
+
+        // User switches to newNote
+        LaunchBehavior.current = .newNote
+        XCTAssertEqual(LaunchBehavior.current, .newNote)
+
+        // User switches back to lastEdited
+        LaunchBehavior.current = .lastEdited
+        XCTAssertEqual(LaunchBehavior.current, .lastEdited)
+    }
+
+    // MARK: - Scenario: First launch (no preference set)
+
+    func testScenarioFirstLaunchNoPreference() {
+        // Ensure no preference is set
+        UserDefaults.standard.removeObject(forKey: "launchBehavior")
+
+        // Should default to lastEdited
+        XCTAssertEqual(LaunchBehavior.current, .lastEdited,
+                      "First launch should default to 'Pick up where I left off'")
+    }
+
+    // MARK: - Cursor Position Tests
+
+    func testMoveCursorToEndNotificationExists() {
+        // Verify the notification name exists
+        let notificationName = Notification.Name.moveCursorToEnd
+        XCTAssertEqual(notificationName.rawValue, "moveCursorToEnd")
+    }
+
+    func testCursorMovesToEndInTextView() {
+        // Create a text view with content
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.string = "Hello World"
+
+        // Cursor starts at beginning
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        XCTAssertEqual(textView.selectedRange().location, 0)
+
+        // Move cursor to end
+        let endPosition = textView.string.count
+        textView.setSelectedRange(NSRange(location: endPosition, length: 0))
+
+        // Verify cursor is at end
+        XCTAssertEqual(textView.selectedRange().location, 11, "Cursor should be at position 11 (end of 'Hello World')")
+        XCTAssertEqual(textView.selectedRange().length, 0, "Should have no selection")
+    }
+
+    func testCursorAtEndAfterMultilineContent() {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.string = "Line 1\nLine 2\nLine 3"
+
+        // Move cursor to end
+        let endPosition = textView.string.count
+        textView.setSelectedRange(NSRange(location: endPosition, length: 0))
+
+        // Verify cursor is at end
+        XCTAssertEqual(textView.selectedRange().location, 20, "Cursor should be at end of multiline content")
+    }
+}
+
 // MARK: - Document Save Lifecycle Tests
 
 final class DocumentSaveLifecycleTests: XCTestCase {

@@ -15,6 +15,24 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
     /// URL of the notes folder
     @Published var notesFolder: URL?
 
+    /// URL of the last edited document (for launch behavior)
+    var lastEditedURL: URL? {
+        get {
+            guard let bookmarkData = UserDefaults.standard.data(forKey: "lastEditedDocumentURL") else { return nil }
+            var isStale = false
+            guard let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, bookmarkDataIsStale: &isStale) else { return nil }
+            return url
+        }
+        set {
+            if let url = newValue {
+                let bookmarkData = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+                UserDefaults.standard.set(bookmarkData, forKey: "lastEditedDocumentURL")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "lastEditedDocumentURL")
+            }
+        }
+    }
+
     // MARK: - Private State
 
     /// Cache of open documents by URL
@@ -152,9 +170,10 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
         DispatchQueue.main.async {
             self.activeDocument = document
 
-            // Update window title
+            // Update window title and track last edited
             if let url = document.fileURL {
                 NSApp.keyWindow?.title = url.deletingPathExtension().lastPathComponent
+                self.lastEditedURL = url
             } else {
                 NSApp.keyWindow?.title = "Untitled"
             }

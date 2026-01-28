@@ -737,6 +737,7 @@ struct SettingsPanel: View {
     @AppStorage("darkMode") private var darkMode: Bool = false
     @AppStorage("fontFamily") private var fontFamily: String = "EB Garamond"
     @AppStorage("showWordCount") private var showWordCount: Bool = true
+    @AppStorage("launchBehavior") private var launchBehavior: LaunchBehavior = .lastEdited
 
     private let availableFonts = [
         "EB Garamond",
@@ -776,6 +777,22 @@ struct SettingsPanel: View {
                 Toggle("", isOn: $showWordCount)
                     .toggleStyle(.switch)
                     .labelsHidden()
+            }
+
+            Divider()
+
+            // Launch behavior
+            VStack(alignment: .leading, spacing: 6) {
+                Text("On Launch")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Picker("", selection: $launchBehavior) {
+                    ForEach(LaunchBehavior.allCases, id: \.self) { behavior in
+                        Text(behavior.displayName).tag(behavior)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
             }
 
             Divider()
@@ -885,6 +902,7 @@ class SmoothCursorTextView: NSTextView {
     private var blinkTimer: Timer?
     private var cursorColor: NSColor = .black  // Safe default, will be updated
     var baseFontSize: CGFloat = 16  // Set from coordinator, used for fixed cursor height
+    private var moveCursorObserver: Any?
 
     // MARK: - Cursor Setup
 
@@ -1291,6 +1309,26 @@ class SmoothCursorTextView: NSTextView {
             let color = isDark ? NSColor.white : NSColor.black
             setupCursor(color: color)
         }
+
+        // Set up observer for moving cursor to end
+        if window != nil && moveCursorObserver == nil {
+            moveCursorObserver = NotificationCenter.default.addObserver(
+                forName: .moveCursorToEnd,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.moveCursorToEnd()
+            }
+        }
+    }
+
+    /// Moves the cursor to the end of the document
+    func moveCursorToEnd() {
+        let endPosition = string.count
+        setSelectedRange(NSRange(location: endPosition, length: 0))
+        scrollRangeToVisible(NSRange(location: endPosition, length: 0))
+        updateCursorPosition(animated: false)
+        resetBlink()
     }
 
     override func layout() {
@@ -1300,6 +1338,9 @@ class SmoothCursorTextView: NSTextView {
 
     deinit {
         blinkTimer?.invalidate()
+        if let observer = moveCursorObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Right Click Formatting
