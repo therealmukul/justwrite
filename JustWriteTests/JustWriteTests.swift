@@ -1,5 +1,220 @@
 import XCTest
+import AppKit
 @testable import JustWrite
+
+// MARK: - Rich Text Formatting Tests (Cmd+B / Cmd+I)
+
+final class RichTextFormattingTests: XCTestCase {
+
+    // MARK: - Bold Formatting Tests
+
+    func testFontManagerCanConvertToBold() {
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let boldFont = NSFontManager.shared.convert(regularFont, toHaveTrait: .boldFontMask)
+
+        let traits = NSFontManager.shared.traits(of: boldFont)
+        XCTAssertTrue(traits.contains(.boldFontMask), "Font should have bold trait after conversion")
+    }
+
+    func testFontManagerCanRemoveBold() {
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let boldFont = NSFontManager.shared.convert(regularFont, toHaveTrait: .boldFontMask)
+        let unboldedFont = NSFontManager.shared.convert(boldFont, toNotHaveTrait: .boldFontMask)
+
+        let traits = NSFontManager.shared.traits(of: unboldedFont)
+        XCTAssertFalse(traits.contains(.boldFontMask), "Font should not have bold trait after removal")
+    }
+
+    func testBoldToggleLogic() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let fontManager = NSFontManager.shared
+
+        // Check if bold, then toggle
+        let traits = fontManager.traits(of: font)
+        let isBold = traits.contains(.boldFontMask)
+        XCTAssertFalse(isBold, "System font should not be bold by default")
+
+        // Apply bold
+        let boldFont = fontManager.convert(font, toHaveTrait: .boldFontMask)
+        let boldTraits = fontManager.traits(of: boldFont)
+        XCTAssertTrue(boldTraits.contains(.boldFontMask), "Should be bold after applying")
+
+        // Remove bold (toggle off)
+        let regularAgain = fontManager.convert(boldFont, toNotHaveTrait: .boldFontMask)
+        let regularTraits = fontManager.traits(of: regularAgain)
+        XCTAssertFalse(regularTraits.contains(.boldFontMask), "Should not be bold after toggle off")
+    }
+
+    // MARK: - Italic Formatting Tests
+
+    func testFontManagerCanConvertToItalic() {
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let italicFont = NSFontManager.shared.convert(regularFont, toHaveTrait: .italicFontMask)
+
+        let traits = NSFontManager.shared.traits(of: italicFont)
+        XCTAssertTrue(traits.contains(.italicFontMask), "Font should have italic trait after conversion")
+    }
+
+    func testFontManagerCanRemoveItalic() {
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let italicFont = NSFontManager.shared.convert(regularFont, toHaveTrait: .italicFontMask)
+        let unitalicizedFont = NSFontManager.shared.convert(italicFont, toNotHaveTrait: .italicFontMask)
+
+        let traits = NSFontManager.shared.traits(of: unitalicizedFont)
+        XCTAssertFalse(traits.contains(.italicFontMask), "Font should not have italic trait after removal")
+    }
+
+    func testItalicToggleLogic() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let fontManager = NSFontManager.shared
+
+        // Check if italic, then toggle
+        let traits = fontManager.traits(of: font)
+        let isItalic = traits.contains(.italicFontMask)
+        XCTAssertFalse(isItalic, "System font should not be italic by default")
+
+        // Apply italic
+        let italicFont = fontManager.convert(font, toHaveTrait: .italicFontMask)
+        let italicTraits = fontManager.traits(of: italicFont)
+        XCTAssertTrue(italicTraits.contains(.italicFontMask), "Should be italic after applying")
+
+        // Remove italic (toggle off)
+        let regularAgain = fontManager.convert(italicFont, toNotHaveTrait: .italicFontMask)
+        let regularTraits = fontManager.traits(of: regularAgain)
+        XCTAssertFalse(regularTraits.contains(.italicFontMask), "Should not be italic after toggle off")
+    }
+
+    // MARK: - Combined Bold + Italic Tests
+
+    func testCanApplyBothBoldAndItalic() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let fontManager = NSFontManager.shared
+
+        let boldFont = fontManager.convert(font, toHaveTrait: .boldFontMask)
+        let boldItalicFont = fontManager.convert(boldFont, toHaveTrait: .italicFontMask)
+
+        let traits = fontManager.traits(of: boldItalicFont)
+        XCTAssertTrue(traits.contains(.boldFontMask), "Should have bold")
+        XCTAssertTrue(traits.contains(.italicFontMask), "Should have italic")
+    }
+
+    func testCanRemoveBoldWhileKeepingItalic() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let fontManager = NSFontManager.shared
+
+        let boldItalicFont = fontManager.convert(
+            fontManager.convert(font, toHaveTrait: .boldFontMask),
+            toHaveTrait: .italicFontMask
+        )
+
+        let italicOnlyFont = fontManager.convert(boldItalicFont, toNotHaveTrait: .boldFontMask)
+        let traits = fontManager.traits(of: italicOnlyFont)
+
+        XCTAssertFalse(traits.contains(.boldFontMask), "Should not have bold")
+        XCTAssertTrue(traits.contains(.italicFontMask), "Should still have italic")
+    }
+
+    func testCanRemoveItalicWhileKeepingBold() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let fontManager = NSFontManager.shared
+
+        let boldItalicFont = fontManager.convert(
+            fontManager.convert(font, toHaveTrait: .boldFontMask),
+            toHaveTrait: .italicFontMask
+        )
+
+        let boldOnlyFont = fontManager.convert(boldItalicFont, toNotHaveTrait: .italicFontMask)
+        let traits = fontManager.traits(of: boldOnlyFont)
+
+        XCTAssertTrue(traits.contains(.boldFontMask), "Should still have bold")
+        XCTAssertFalse(traits.contains(.italicFontMask), "Should not have italic")
+    }
+
+    // MARK: - NSTextStorage Formatting Tests
+
+    func testApplyBoldToTextStorageRange() {
+        let textStorage = NSTextStorage(string: "Hello World")
+        let font = NSFont.systemFont(ofSize: 14)
+        textStorage.addAttribute(.font, value: font, range: NSRange(location: 0, length: textStorage.length))
+
+        // Apply bold to "World" (range 6-11)
+        let range = NSRange(location: 6, length: 5)
+        let fontManager = NSFontManager.shared
+
+        textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
+            guard let currentFont = value as? NSFont else { return }
+            let boldFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
+            textStorage.addAttribute(.font, value: boldFont, range: attrRange)
+        }
+
+        // Verify "World" is bold
+        var worldFont: NSFont?
+        textStorage.enumerateAttribute(.font, in: range, options: []) { value, _, _ in
+            worldFont = value as? NSFont
+        }
+
+        XCTAssertNotNil(worldFont)
+        let traits = fontManager.traits(of: worldFont!)
+        XCTAssertTrue(traits.contains(.boldFontMask), "World should be bold")
+    }
+
+    func testApplyItalicToTextStorageRange() {
+        let textStorage = NSTextStorage(string: "Hello World")
+        let font = NSFont.systemFont(ofSize: 14)
+        textStorage.addAttribute(.font, value: font, range: NSRange(location: 0, length: textStorage.length))
+
+        // Apply italic to "Hello" (range 0-5)
+        let range = NSRange(location: 0, length: 5)
+        let fontManager = NSFontManager.shared
+
+        textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
+            guard let currentFont = value as? NSFont else { return }
+            let italicFont = fontManager.convert(currentFont, toHaveTrait: .italicFontMask)
+            textStorage.addAttribute(.font, value: italicFont, range: attrRange)
+        }
+
+        // Verify "Hello" is italic
+        var helloFont: NSFont?
+        textStorage.enumerateAttribute(.font, in: range, options: []) { value, _, _ in
+            helloFont = value as? NSFont
+        }
+
+        XCTAssertNotNil(helloFont)
+        let traits = fontManager.traits(of: helloFont!)
+        XCTAssertTrue(traits.contains(.italicFontMask), "Hello should be italic")
+    }
+
+    func testToggleBoldOnAlreadyBoldText() {
+        let textStorage = NSTextStorage(string: "Bold")
+        let fontManager = NSFontManager.shared
+        let boldFont = fontManager.convert(NSFont.systemFont(ofSize: 14), toHaveTrait: .boldFontMask)
+        textStorage.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 4))
+
+        // Toggle bold (should remove it)
+        let range = NSRange(location: 0, length: 4)
+        textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
+            guard let currentFont = value as? NSFont else { return }
+            let traits = fontManager.traits(of: currentFont)
+            let newFont: NSFont
+            if traits.contains(.boldFontMask) {
+                newFont = fontManager.convert(currentFont, toNotHaveTrait: .boldFontMask)
+            } else {
+                newFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
+            }
+            textStorage.addAttribute(.font, value: newFont, range: attrRange)
+        }
+
+        // Verify no longer bold
+        var resultFont: NSFont?
+        textStorage.enumerateAttribute(.font, in: range, options: []) { value, _, _ in
+            resultFont = value as? NSFont
+        }
+
+        XCTAssertNotNil(resultFont)
+        let traits = fontManager.traits(of: resultFont!)
+        XCTAssertFalse(traits.contains(.boldFontMask), "Should not be bold after toggle")
+    }
+}
 
 final class JustWriteDocumentTests: XCTestCase {
 

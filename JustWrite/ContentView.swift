@@ -1218,7 +1218,109 @@ class SmoothCursorTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        // Handle Cmd+B for bold
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "b" {
+            toggleBold()
+            return
+        }
+
+        // Handle Cmd+I for italic
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "i" {
+            toggleItalic()
+            return
+        }
+
         super.keyDown(with: event)
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
+    }
+
+    // MARK: - Rich Text Formatting
+
+    func toggleBold() {
+        guard let textStorage = textStorage else { return }
+        let range = selectedRange()
+
+        if range.length == 0 {
+            // No selection - toggle typing attributes for future text
+            var typingAttributes = self.typingAttributes
+            if let currentFont = typingAttributes[.font] as? NSFont {
+                let fontManager = NSFontManager.shared
+                let traits = fontManager.traits(of: currentFont)
+                let newFont: NSFont
+                if traits.contains(.boldFontMask) {
+                    newFont = fontManager.convert(currentFont, toNotHaveTrait: .boldFontMask)
+                } else {
+                    newFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
+                }
+                typingAttributes[.font] = newFont
+                self.typingAttributes = typingAttributes
+            }
+            return
+        }
+
+        // Has selection - toggle bold on selected text
+        let fontManager = NSFontManager.shared
+        textStorage.beginEditing()
+        textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
+            guard let currentFont = value as? NSFont else { return }
+            let traits = fontManager.traits(of: currentFont)
+            let newFont: NSFont
+            if traits.contains(.boldFontMask) {
+                newFont = fontManager.convert(currentFont, toNotHaveTrait: .boldFontMask)
+            } else {
+                newFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
+            }
+            textStorage.addAttribute(.font, value: newFont, range: attrRange)
+        }
+        textStorage.endEditing()
+
+        DispatchQueue.main.async { [weak self] in
+            self?.updateCursorPosition(animated: true)
+            self?.resetBlink()
+        }
+    }
+
+    func toggleItalic() {
+        guard let textStorage = textStorage else { return }
+        let range = selectedRange()
+
+        if range.length == 0 {
+            // No selection - toggle typing attributes for future text
+            var typingAttributes = self.typingAttributes
+            if let currentFont = typingAttributes[.font] as? NSFont {
+                let fontManager = NSFontManager.shared
+                let traits = fontManager.traits(of: currentFont)
+                let newFont: NSFont
+                if traits.contains(.italicFontMask) {
+                    newFont = fontManager.convert(currentFont, toNotHaveTrait: .italicFontMask)
+                } else {
+                    newFont = fontManager.convert(currentFont, toHaveTrait: .italicFontMask)
+                }
+                typingAttributes[.font] = newFont
+                self.typingAttributes = typingAttributes
+            }
+            return
+        }
+
+        // Has selection - toggle italic on selected text
+        let fontManager = NSFontManager.shared
+        textStorage.beginEditing()
+        textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
+            guard let currentFont = value as? NSFont else { return }
+            let traits = fontManager.traits(of: currentFont)
+            let newFont: NSFont
+            if traits.contains(.italicFontMask) {
+                newFont = fontManager.convert(currentFont, toNotHaveTrait: .italicFontMask)
+            } else {
+                newFont = fontManager.convert(currentFont, toHaveTrait: .italicFontMask)
+            }
+            textStorage.addAttribute(.font, value: newFont, range: attrRange)
+        }
+        textStorage.endEditing()
+
         DispatchQueue.main.async { [weak self] in
             self?.updateCursorPosition(animated: true)
             self?.resetBlink()
