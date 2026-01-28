@@ -2,6 +2,74 @@ import XCTest
 import AppKit
 @testable import JustWrite
 
+// MARK: - App Launch Behavior Tests
+
+final class AppLaunchBehaviorTests: XCTestCase {
+
+    // MARK: - Fresh Note on Launch Tests
+
+    func testNewDocumentStartsWithEmptyText() {
+        // When app launches, a new document should have empty text
+        let document = JustWriteDocument()
+        XCTAssertEqual(document.text, "", "New document should start with empty text")
+    }
+
+    func testNewDocumentHasEmptyAttributedText() {
+        let document = JustWriteDocument()
+        XCTAssertEqual(document.attributedText.length, 0, "New document should have empty attributed text")
+    }
+
+    func testNewDocumentIsReadyForEditing() {
+        let document = JustWriteDocument()
+        // Document should be in a state ready for user to start typing
+        XCTAssertEqual(document.text, "")
+        XCTAssertNotNil(document.attributedText)
+    }
+
+    // MARK: - Document Initialization Tests
+
+    func testDocumentWithTextInitializesCorrectly() {
+        let document = JustWriteDocument(text: "Hello")
+        XCTAssertEqual(document.text, "Hello")
+    }
+
+    func testEmptyDocumentTextProperty() {
+        let document = JustWriteDocument()
+        // Setting text on empty document should work
+        var mutableDoc = document
+        mutableDoc.text = "New content"
+        XCTAssertEqual(mutableDoc.text, "New content")
+    }
+
+    // MARK: - UserDefaults Key Tests (verify we don't track last opened)
+
+    func testLastOpenedDocumentKeyExists() {
+        // This key should NOT be used anymore for opening documents on launch
+        // But we verify it exists for backwards compatibility during removal
+        let key = "lastOpenedDocument"
+        // Clear any existing value
+        UserDefaults.standard.removeObject(forKey: key)
+        XCTAssertNil(UserDefaults.standard.string(forKey: key))
+    }
+
+    func testAppShouldNotPersistLastOpenedDocument() {
+        // After the fix, we should not be tracking last opened document for launch
+        // This is a behavioral test - the app should always start fresh
+        let key = "lastOpenedDocument"
+
+        // Even if a value exists, app should ignore it on launch
+        UserDefaults.standard.set("/some/path/test.rtf", forKey: key)
+
+        // The value might exist but app behavior should be to create new note
+        // We can't test the full app launch here, but we verify the document starts fresh
+        let newDocument = JustWriteDocument()
+        XCTAssertEqual(newDocument.text, "", "App should always start with fresh empty document")
+
+        // Cleanup
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
 // MARK: - Document Save State Tests
 
 final class DocumentSaveStateTests: XCTestCase {

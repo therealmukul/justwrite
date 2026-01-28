@@ -15,7 +15,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hasLaunched = false
 
     static let notesFolderKey = "notesFolder"
-    static let lastOpenedDocumentKey = "lastOpenedDocument"
 
     var notesFolder: URL? {
         get {
@@ -33,16 +32,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    var lastOpenedDocument: URL? {
-        get {
-            guard let path = UserDefaults.standard.string(forKey: Self.lastOpenedDocumentKey) else { return nil }
-            return URL(fileURLWithPath: path)
-        }
-        set {
-            UserDefaults.standard.set(newValue?.path, forKey: Self.lastOpenedDocumentKey)
-        }
-    }
-
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Disable tabs - single document at a time
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -54,23 +43,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.tabbingMode = .disallowed
         }
 
-        // Track when documents are saved (to remember last opened)
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(documentDidSave(_:)),
-            name: Notification.Name("NSDocumentDidSaveNotification"),
-            object: nil
-        )
-
         // Check if this is first launch (no notes folder set)
         if notesFolder == nil {
             DispatchQueue.main.async {
                 self.promptForNotesFolder()
             }
         } else {
-            // Try to open last document
+            // Always start with a fresh new note
             DispatchQueue.main.async {
-                self.openLastDocumentOrCreateNew()
+                self.createNewNoteInFolder()
             }
         }
 
@@ -100,19 +81,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func openLastDocumentOrCreateNew() {
-        // Try to open the last document
-        if let lastDoc = lastOpenedDocument, FileManager.default.fileExists(atPath: lastDoc.path) {
-            NSDocumentController.shared.openDocument(withContentsOf: lastDoc, display: true) { doc, _, error in
-                if error != nil || doc == nil {
-                    self.createNewNoteInFolder()
-                }
-            }
-        } else {
-            createNewNoteInFolder()
-        }
-    }
-
     func createNewNoteInFolder() {
         guard let folder = notesFolder else {
             // No folder set, just create untitled
@@ -131,12 +99,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func documentDidSave(_ notification: Notification) {
-        if let document = notification.object as? NSDocument, let url = document.fileURL {
-            lastOpenedDocument = url
-        }
-    }
-
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
         // Return false to prevent the default open panel
         // We handle opening in applicationDidFinishLaunching
@@ -145,7 +107,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            openLastDocumentOrCreateNew()
+            // Always create a fresh new note when app is reopened
+            createNewNoteInFolder()
             return false
         }
         return true

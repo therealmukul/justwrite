@@ -882,7 +882,6 @@ class NotesManager: ObservableObject {
         // The ContentView will handle loading the content
         NotificationCenter.default.post(name: .openNoteRequest, object: url)
         currentDocumentURL = url
-        UserDefaults.standard.set(url.path, forKey: "lastOpenedDocument")
     }
 
     func changeNotesFolder() {
