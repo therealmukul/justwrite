@@ -9,12 +9,9 @@ extension Notification.Name {
     static let showFormattingToolbar = Notification.Name("showFormattingToolbar")
     static let hideFormattingToolbar = Notification.Name("hideFormattingToolbar")
     static let applyFormatting = Notification.Name("applyFormatting")
-    static let openNewWindow = Notification.Name("openNewWindow")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private var hasLaunched = false
-
     /// Our custom document manager - must be created early to become the shared controller
     let documentManager = TinyWriterDocumentManager()
 
@@ -40,8 +37,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.documentManager.createNewTinyWriterDocument()
             }
         }
-
-        hasLaunched = true
     }
 
     func applicationWillTerminate(_ notification: Notification) {

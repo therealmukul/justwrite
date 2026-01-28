@@ -1692,69 +1692,6 @@ struct RichTextView: NSViewRepresentable {
             }
         }
 
-        private func getBoldFont(size: CGFloat) -> NSFont {
-            let fontFamily = parent.fontFamily
-            if fontFamily == "System" || fontFamily == "SF Pro" {
-                return NSFont.systemFont(ofSize: size, weight: .bold)
-            } else if fontFamily == "New York" {
-                if let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body).withDesign(.serif)?.withSymbolicTraits(.bold) {
-                    return NSFont(descriptor: descriptor, size: size) ?? NSFont.systemFont(ofSize: size, weight: .bold)
-                }
-                return NSFont.systemFont(ofSize: size, weight: .bold)
-            } else if fontFamily == "EB Garamond" {
-                // EB Garamond is a variable font, use font manager for bold
-                for name in ["EBGaramond", "EB Garamond", "EBGaramond-Regular"] {
-                    if let baseFont = NSFont(name: name, size: size) {
-                        return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
-                    }
-                }
-                return NSFont.systemFont(ofSize: size, weight: .bold)
-            } else {
-                // Try bold variant
-                let boldName = fontFamily + "-Bold"
-                if let font = NSFont(name: boldName, size: size) {
-                    return font
-                }
-                // Try using font manager to get bold
-                if let baseFont = NSFont(name: fontFamily, size: size) {
-                    return NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
-                }
-                return NSFont.systemFont(ofSize: size, weight: .bold)
-            }
-        }
-
-        private func getItalicFont(size: CGFloat) -> NSFont {
-            let fontFamily = parent.fontFamily
-            if fontFamily == "System" || fontFamily == "SF Pro" {
-                let systemFont = NSFont.systemFont(ofSize: size, weight: .regular)
-                return NSFontManager.shared.convert(systemFont, toHaveTrait: .italicFontMask)
-            } else if fontFamily == "New York" {
-                if let descriptor = NSFontDescriptor.preferredFontDescriptor(forTextStyle: .body).withDesign(.serif)?.withSymbolicTraits(.italic) {
-                    return NSFont(descriptor: descriptor, size: size) ?? NSFont.systemFont(ofSize: size)
-                }
-                return NSFont.systemFont(ofSize: size)
-            } else if fontFamily == "EB Garamond" {
-                // Try EB Garamond Italic variant
-                for name in ["EBGaramond-Italic", "EB Garamond Italic"] {
-                    if let font = NSFont(name: name, size: size) {
-                        return font
-                    }
-                }
-                // Fallback: get regular and convert to italic
-                for name in ["EBGaramond", "EB Garamond", "EBGaramond-Regular"] {
-                    if let baseFont = NSFont(name: name, size: size) {
-                        return NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
-                    }
-                }
-                return NSFont.systemFont(ofSize: size)
-            } else {
-                if let baseFont = NSFont(name: fontFamily, size: size) {
-                    return NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
-                }
-                return NSFont.systemFont(ofSize: size)
-            }
-        }
-
         @objc func frameDidChange(_ notification: Notification) {
             updateTextInsets()
         }

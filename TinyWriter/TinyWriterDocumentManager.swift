@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import Combine
 import UniformTypeIdentifiers
 
 /// Manages document lifecycle for TinyWriter.
@@ -20,9 +19,6 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
 
     /// Cache of open documents by URL
     private var openDocuments: [URL: TinyWriterDocument] = [:]
-
-    /// Cancellables for Combine subscriptions
-    private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
 
@@ -195,29 +191,6 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
                     print("Autosave error: \(error.localizedDescription)")
                 }
             }
-        }
-    }
-
-    // MARK: - Document Closing
-
-    /// Closes a document and removes it from the cache.
-    func closeTinyWriterDocument(_ document: TinyWriterDocument) {
-        // Save if needed
-        if document.hasUnautosavedChanges {
-            document.save(nil)
-        }
-
-        // Remove from cache
-        if let url = document.fileURL {
-            openDocuments.removeValue(forKey: url)
-        }
-
-        // Close the document
-        document.close()
-
-        // If this was the active document, clear it
-        if activeDocument === document {
-            activeDocument = nil
         }
     }
 
