@@ -9,28 +9,14 @@ extension Notification.Name {
     static let showFormattingToolbar = Notification.Name("showFormattingToolbar")
     static let hideFormattingToolbar = Notification.Name("hideFormattingToolbar")
     static let applyFormatting = Notification.Name("applyFormatting")
+    static let openNewWindow = Notification.Name("openNewWindow")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var hasLaunched = false
 
-    static let notesFolderKey = "notesFolder"
-
-    var notesFolder: URL? {
-        get {
-            guard let bookmarkData = UserDefaults.standard.data(forKey: Self.notesFolderKey) else { return nil }
-            var isStale = false
-            return try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, bookmarkDataIsStale: &isStale)
-        }
-        set {
-            if let url = newValue {
-                let bookmarkData = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-                UserDefaults.standard.set(bookmarkData, forKey: Self.notesFolderKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: Self.notesFolderKey)
-            }
-        }
-    }
+    /// Our custom document manager - must be created early to become the shared controller
+    let documentManager = JustWriteDocumentManager()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Disable tabs - single document at a time
@@ -44,14 +30,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Check if this is first launch (no notes folder set)
-        if notesFolder == nil {
+        if documentManager.notesFolder == nil {
             DispatchQueue.main.async {
                 self.promptForNotesFolder()
             }
         } else {
             // Always start with a fresh new note
             DispatchQueue.main.async {
-                self.createNewNoteInFolder()
+                self.documentManager.createNewJustWriteDocument()
             }
         }
 
@@ -59,8 +45,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Force flush any pending changes before termination
-        NotificationCenter.default.post(name: Notification.Name("flushPendingChanges"), object: nil)
+        // Save all open documents before termination
+        documentManager.saveAllDocuments()
     }
 
     func promptForNotesFolder() {
@@ -73,44 +59,63 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.allowsMultipleSelection = false
 
         if panel.runModal() == .OK, let url = panel.url {
-            // Start accessing security-scoped resource
-            _ = url.startAccessingSecurityScopedResource()
-            notesFolder = url
+            documentManager.setNotesFolder(url)
             NotificationCenter.default.post(name: .notesFolderChanged, object: url)
-            createNewNoteInFolder()
-        }
-    }
-
-    func createNewNoteInFolder() {
-        guard let folder = notesFolder else {
-            // No folder set, just create untitled
-            NSDocumentController.shared.newDocument(nil)
-            return
-        }
-
-        // Access the security-scoped resource
-        _ = folder.startAccessingSecurityScopedResource()
-
-        // Create a new document in the notes folder
-        do {
-            try NSDocumentController.shared.openUntitledDocumentAndDisplay(true)
-        } catch {
-            NSDocumentController.shared.newDocument(nil)
+            documentManager.createNewJustWriteDocument()
         }
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
         // Return false to prevent the default open panel
         // We handle opening in applicationDidFinishLaunching
-        return !hasLaunched
+        return false
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            // Always create a fresh new note when app is reopened
-            createNewNoteInFolder()
-            return false
+            // No visible windows - need to show one
+            return showOrCreateWindow()
         }
+        return true
+    }
+
+    /// Shows an existing window or creates a new one when the dock icon is clicked
+    /// Returns true if the system should handle window creation, false if we handled it
+    func showOrCreateWindow() -> Bool {
+        // Look for our app's main content windows (not system panels, popovers, etc.)
+        // SwiftUI WindowGroup windows have specific characteristics
+        let appWindows = NSApp.windows.filter { window in
+            // Must be able to become main window
+            guard window.canBecomeMain else { return false }
+            // Must be a regular window (level 0), not a panel or overlay
+            guard window.level == .normal else { return false }
+            // Must have a content view (empty windows don't count)
+            guard window.contentView != nil else { return false }
+            // Filter out small windows (likely popovers/tooltips)
+            guard window.frame.width > 200 && window.frame.height > 200 else { return false }
+            return true
+        }
+
+        if let existingWindow = appWindows.first {
+            // Found an existing window - show it
+            if existingWindow.isMiniaturized {
+                existingWindow.deminiaturize(nil)
+            } else {
+                existingWindow.makeKeyAndOrderFront(nil)
+            }
+            NSApp.activate(ignoringOtherApps: true)
+            return false  // We handled it
+        }
+
+        // No existing window - activate app and let system create new WindowGroup instance
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Create a new document for the new window
+        DispatchQueue.main.async {
+            self.documentManager.createNewJustWriteDocument()
+        }
+
+        // Return true so the system creates a new window from WindowGroup
         return true
     }
 }
@@ -120,17 +125,28 @@ struct JustWriteApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        DocumentGroup(newDocument: JustWriteDocument()) { file in
-            ContentView(document: file.$document)
+        WindowGroup(id: "main") {
+            ContentView()
+                .environmentObject(appDelegate.documentManager)
         }
         .defaultSize(width: 1200, height: 850)
         .commands {
+            // Remove the default New menu item and replace with our own
             CommandGroup(replacing: .newItem) {
                 Button("New Note") {
-                    NotificationCenter.default.post(name: .newNoteRequest, object: nil)
+                    appDelegate.documentManager.createNewJustWriteDocument()
                 }
                 .keyboardShortcut("n", modifiers: .command)
             }
+
+            // Add Save command
+            CommandGroup(replacing: .saveItem) {
+                Button("Save") {
+                    appDelegate.documentManager.saveCurrentDocumentIfNeeded()
+                }
+                .keyboardShortcut("s", modifiers: .command)
+            }
+
             CommandGroup(after: .sidebar) {
                 Button("Toggle Sidebar") {
                     NotificationCenter.default.post(name: .toggleSidebar, object: nil)

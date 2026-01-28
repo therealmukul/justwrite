@@ -73,8 +73,7 @@ struct FormatButton: View {
 
 
 struct ContentView: View {
-    @Binding var document: JustWriteDocument
-    @StateObject private var documentState = DocumentStateManager()
+    @EnvironmentObject var documentManager: JustWriteDocumentManager
     @State private var showSidebar = false
     @State private var showSettings = false
     @AppStorage("fontSize") private var fontSize: Double = 16
@@ -88,9 +87,19 @@ struct ContentView: View {
     @State private var showFormattingToolbar = false
     @State private var toolbarPosition: CGPoint = .zero
 
+    // Binding to active document's attributed text
+    private var attributedTextBinding: Binding<NSAttributedString> {
+        Binding(
+            get: { documentManager.activeDocument?.attributedText ?? NSAttributedString() },
+            set: { newValue in
+                documentManager.activeDocument?.attributedText = newValue
+            }
+        )
+    }
+
     // Word count calculation
     private var wordCount: Int {
-        let text = document.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (documentManager.activeDocument?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return 0 }
         return text.components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
@@ -98,14 +107,14 @@ struct ContentView: View {
     }
 
     private var characterCount: Int {
-        document.text.count
+        documentManager.activeDocument?.text.count ?? 0
     }
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 // Main editor
-                RichTextView(attributedText: $document.attributedText, documentState: documentState, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode, fontFamily: fontFamily)
+                RichTextView(attributedText: attributedTextBinding, fontSize: fontSize, lineSpacing: lineSpacing, lineLength: lineLength, darkMode: darkMode, fontFamily: fontFamily)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(darkMode ? Color.black : Color(NSColor.textBackgroundColor))
 
@@ -181,208 +190,22 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openNoteRequest)) { notification in
             guard let url = notification.object as? URL else { return }
-            loadNote(from: url)
+            documentManager.openJustWriteDocument(at: url)
         }
         .onReceive(NotificationCenter.default.publisher(for: .newNoteRequest)) { _ in
-            createNewNote()
+            documentManager.createNewJustWriteDocument()
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NSDocumentDidSaveNotification"))) { _ in
-            // Mark as saved when document is written to disk
-            documentState.markAsSaved(text: document.text)
-        }
-        .onChange(of: documentState.hasUnsavedChanges) { _, hasChanges in
+        .onChange(of: documentManager.activeDocument?.hasUnautosavedChanges) { _, hasChanges in
             // Update window title to show unsaved indicator
             guard let window = NSApp.keyWindow else { return }
+            guard let hasChanges = hasChanges else { return }
             var baseTitle = window.title
             if baseTitle.hasSuffix(" \u{2022}") {
                 baseTitle = String(baseTitle.dropLast(2))
             }
             window.title = hasChanges ? "\(baseTitle) \u{2022}" : baseTitle
         }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("flushPendingChanges"))) { _ in
-            // Force flush pending changes (called on app termination)
-            // Sync textView content directly to document binding
-            if let textView = NSApp.keyWindow?.contentView?.subviews
-                .compactMap({ $0 as? NSScrollView })
-                .first?.documentView as? NSTextView,
-               let textStorage = textView.textStorage {
-                document.attributedText = NSAttributedString(attributedString: textStorage)
-            }
-
-            documentState.flushPendingChanges { _ in
-                // Already synced above
-            }
-
-            if let currentDoc = NSDocumentController.shared.currentDocument,
-               currentDoc.fileURL != nil {
-                currentDoc.save(nil)
-            }
-        }
         .preferredColorScheme(.light)
-    }
-
-    private func createNewNote() {
-        // Get notes folder first
-        guard let notesFolder = getNotesFolder() else {
-            // No notes folder set - just clear the editor
-            document.text = ""
-            documentState.resetForNewDocument(text: "")
-            if let currentDoc = NSDocumentController.shared.currentDocument {
-                currentDoc.fileURL = nil
-            }
-            NSApp.keyWindow?.title = "Untitled"
-            NotificationCenter.default.post(name: .currentDocumentChanged, object: nil)
-            return
-        }
-
-        guard let currentDoc = NSDocumentController.shared.currentDocument else { return }
-
-        // SAVE FIRST - Sync textView content to document binding
-        // Get the current attributed text from the textView via the Coordinator
-        if let textView = NSApp.keyWindow?.contentView?.subviews
-            .compactMap({ $0 as? NSScrollView })
-            .first?.documentView as? NSTextView,
-           let textStorage = textView.textStorage {
-            // Directly sync the attributed text to ensure we save the latest content
-            document.attributedText = NSAttributedString(attributedString: textStorage)
-        }
-
-        // Flush any pending state
-        documentState.flushPendingChanges { [self] _ in
-            // Already synced above, nothing more needed
-        }
-
-        // Save current document if it has a URL, then create new note
-        if let currentURL = currentDoc.fileURL {
-            // Save to current URL first, then create new file
-            currentDoc.save(to: currentURL, ofType: "public.rtf", for: .saveOperation) { [self] saveError in
-                if saveError != nil {
-                    // Save failed, but continue to create new note
-                    print("Warning: Failed to save current document before creating new note")
-                }
-
-                DispatchQueue.main.async { [self] in
-                    self.createNewFile(in: notesFolder, using: currentDoc)
-                }
-            }
-        } else {
-            // No existing file, just create new one
-            createNewFile(in: notesFolder, using: currentDoc)
-        }
-    }
-
-    private func createNewFile(in notesFolder: URL, using currentDoc: NSDocument) {
-        // Generate unique filename
-        let newFileName = generateUniqueFilename(in: notesFolder)
-        let newFileURL = notesFolder.appendingPathComponent(newFileName)
-
-        // Clear the document text for the new file
-        document.text = ""
-        documentState.resetForNewDocument(text: "")
-
-        // Save empty content to new file
-        currentDoc.save(to: newFileURL, ofType: "public.rtf", for: .saveAsOperation) { error in
-            if error != nil {
-                // Failed - reset to untitled
-                DispatchQueue.main.async {
-                    currentDoc.fileURL = nil
-                    NSApp.keyWindow?.title = "Untitled"
-                }
-                return
-            }
-
-            DispatchQueue.main.async { [self] in
-                documentState.setCurrentDocumentURL(newFileURL)
-
-                // Update window title (without .rtf extension)
-                let displayName = newFileURL.deletingPathExtension().lastPathComponent
-                NSApp.keyWindow?.title = displayName
-
-                // Notify that current document changed and refresh sidebar
-                NotificationCenter.default.post(name: .currentDocumentChanged, object: newFileURL)
-                NotificationCenter.default.post(name: .notesFolderChanged, object: nil)
-            }
-        }
-    }
-
-    private func getNotesFolder() -> URL? {
-        guard let bookmarkData = UserDefaults.standard.data(forKey: "notesFolder") else { return nil }
-        var isStale = false
-        guard let url = try? URL(resolvingBookmarkData: bookmarkData, options: .withSecurityScope, bookmarkDataIsStale: &isStale) else { return nil }
-        _ = url.startAccessingSecurityScopedResource()
-        return url
-    }
-
-    private func generateUniqueFilename(in folder: URL) -> String {
-        // Generate a human-readable unique name with timestamp
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d MMM HH.mm.ss"
-        let timestamp = formatter.string(from: Date())
-
-        let baseName = timestamp
-        let ext = "rtf"
-
-        // This should always be unique due to timestamp, but add counter just in case
-        var filename = "\(baseName).\(ext)"
-        var fileURL = folder.appendingPathComponent(filename)
-
-        var counter = 1
-        while FileManager.default.fileExists(atPath: fileURL.path) {
-            filename = "\(baseName) (\(counter)).\(ext)"
-            fileURL = folder.appendingPathComponent(filename)
-            counter += 1
-        }
-
-        return filename
-    }
-
-    private func loadNote(from url: URL) {
-        guard let currentDoc = NSDocumentController.shared.currentDocument else { return }
-
-        // SAVE FIRST - Sync textView content directly to document binding
-        if let textView = NSApp.keyWindow?.contentView?.subviews
-            .compactMap({ $0 as? NSScrollView })
-            .first?.documentView as? NSTextView,
-           let textStorage = textView.textStorage {
-            document.attributedText = NSAttributedString(attributedString: textStorage)
-        }
-
-        documentState.flushPendingChanges { _ in
-            // Already synced above
-        }
-
-        // Save current document if it has unsaved changes and a URL
-        if currentDoc.fileURL != nil && documentState.hasUnsavedChanges {
-            currentDoc.save(nil)
-        }
-
-        do {
-            // Set the file URL first
-            currentDoc.fileURL = url
-
-            // Use revert to properly load the file and update modification tracking
-            // This prevents "file changed by another application" warnings
-            try currentDoc.revert(toContentsOf: url, ofType: url.pathExtension == "rtf" ? "public.rtf" : "public.plain-text")
-
-            // Update document state with loaded content
-            documentState.markAsSaved(text: document.text)
-            documentState.setCurrentDocumentURL(url)
-
-            // Update window title
-            NSApp.keyWindow?.title = url.deletingPathExtension().lastPathComponent
-
-            // Notify that current document changed
-            NotificationCenter.default.post(name: .currentDocumentChanged, object: url)
-        } catch {
-            // Fallback: just read the content directly
-            if let content = try? String(contentsOf: url, encoding: .utf8) {
-                document.text = content
-                documentState.markAsSaved(text: content)
-                documentState.setCurrentDocumentURL(url)
-                NSApp.keyWindow?.title = url.deletingPathExtension().lastPathComponent
-                NotificationCenter.default.post(name: .currentDocumentChanged, object: url)
-            }
-        }
     }
 }
 
@@ -1193,9 +1016,9 @@ class SmoothCursorTextView: NSTextView {
                     positionAnimation.mass = 0.3
                 } else {
                     // Smooth liquid animation for larger movements
-                    positionAnimation.damping = 15
-                    positionAnimation.stiffness = 300
-                    positionAnimation.mass = 0.8
+                    positionAnimation.damping = 30
+                    positionAnimation.stiffness = 800
+                    positionAnimation.mass = 0.3
                 }
                 positionAnimation.initialVelocity = 0
                 positionAnimation.duration = positionAnimation.settlingDuration
@@ -1522,7 +1345,6 @@ class SmoothCursorTextView: NSTextView {
 
 struct RichTextView: NSViewRepresentable {
     @Binding var attributedText: NSAttributedString
-    var documentState: DocumentStateManager
     var fontSize: Double
     var lineSpacing: Double
     var lineLength: Double
@@ -1967,18 +1789,11 @@ struct RichTextView: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView,
                   let textStorage = textView.textStorage else { return }
 
-            // Get current document URL for backup tracking
-            let documentURL = NSDocumentController.shared.currentDocument?.fileURL
-            let newText = textView.string
-
-            // Use document state manager for debounced saves and backup
-            parent.documentState.textDidChange(newText: newText, documentURL: documentURL) { [weak self] (_: String) in
-                // Commit the attributed text to the document
-                DispatchQueue.main.async {
-                    guard let self = self,
-                          let currentStorage = self.textView?.textStorage else { return }
-                    self.parent.attributedText = NSAttributedString(attributedString: currentStorage)
-                }
+            // Commit the attributed text to the document binding
+            // NSDocument's autosave will handle the actual file saving
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.parent.attributedText = NSAttributedString(attributedString: textStorage)
             }
         }
 
@@ -1986,5 +1801,6 @@ struct RichTextView: NSViewRepresentable {
 }
 
 #Preview {
-    ContentView(document: .constant(JustWriteDocument()))
+    ContentView()
+        .environmentObject(JustWriteDocumentManager())
 }

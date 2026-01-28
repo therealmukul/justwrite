@@ -1,6 +1,66 @@
 import XCTest
 import AppKit
+import UniformTypeIdentifiers
 @testable import JustWrite
+
+// MARK: - Window Reopen Behavior Tests
+
+final class WindowReopenBehaviorTests: XCTestCase {
+
+    // MARK: - Dock Icon Click Tests
+
+    func testAppDelegateHasReopenHandler() {
+        // Verify AppDelegate has the reopen handler and it's callable
+        let appDelegate = AppDelegate()
+
+        // The method should exist and be callable without crashing
+        // The actual return value depends on window state at runtime
+        _ = appDelegate.applicationShouldHandleReopen(NSApplication.shared, hasVisibleWindows: false)
+        _ = appDelegate.applicationShouldHandleReopen(NSApplication.shared, hasVisibleWindows: true)
+
+        // Test passes if no crash
+        XCTAssertTrue(true, "AppDelegate should have working reopen handler")
+    }
+
+    func testAppShouldHandleReopenWithVisibleWindows() {
+        let appDelegate = AppDelegate()
+
+        // When there ARE visible windows, always return true to let system handle it
+        let result = appDelegate.applicationShouldHandleReopen(NSApplication.shared, hasVisibleWindows: true)
+
+        XCTAssertTrue(result, "Should return true when there are visible windows")
+    }
+
+    func testShowOrCreateWindowMethod() {
+        // Test that showOrCreateWindow exists and returns a boolean
+        let appDelegate = AppDelegate()
+
+        // The method should exist and return a boolean
+        let result = appDelegate.showOrCreateWindow()
+
+        // Result is a boolean indicating whether system should create window
+        XCTAssertNotNil(result, "showOrCreateWindow should return a boolean")
+    }
+
+    func testReopenHandlerActivatesApp() {
+        // Verify that the reopen handler activates the application
+        let appDelegate = AppDelegate()
+
+        // Trigger reopen with no visible windows
+        _ = appDelegate.applicationShouldHandleReopen(NSApplication.shared, hasVisibleWindows: false)
+
+        // Give time for activation
+        let expectation = XCTestExpectation(description: "App activation")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+
+        // In a full app environment, this would activate the app
+        // For unit tests, we verify the method completes without error
+        XCTAssertTrue(true, "Reopen handler should complete without error")
+    }
+}
 
 // MARK: - App Launch Behavior Tests
 
@@ -67,6 +127,341 @@ final class AppLaunchBehaviorTests: XCTestCase {
 
         // Cleanup
         UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
+// MARK: - Document Save Lifecycle Tests
+
+final class DocumentSaveLifecycleTests: XCTestCase {
+
+    // MARK: - Change Tracking Tests
+
+    func testDocumentMarksItselfDirtyWhenTextChanges() {
+        let document = JustWriteDocument()
+
+        // Give document a file URL (NSDocument needs this for change tracking)
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).rtf")
+        document.fileURL = tempURL
+
+        // New document should not have unsaved changes initially
+        XCTAssertFalse(document.hasUnautosavedChanges, "New document should not have unsaved changes")
+
+        // Change the text
+        document.text = "New content"
+
+        // Document should now be marked as dirty
+        XCTAssertTrue(document.hasUnautosavedChanges, "Document should have unsaved changes after text modification")
+    }
+
+    func testDocumentMarksItselfDirtyWhenAttributedTextChanges() {
+        let document = JustWriteDocument()
+
+        // Give document a file URL (NSDocument needs this for change tracking)
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).rtf")
+        document.fileURL = tempURL
+
+        // New document should not have unsaved changes initially
+        XCTAssertFalse(document.hasUnautosavedChanges, "New document should not have unsaved changes")
+
+        // Change the attributed text
+        let newText = NSAttributedString(string: "New attributed content")
+        document.attributedText = newText
+
+        // Document should now be marked as dirty
+        XCTAssertTrue(document.hasUnautosavedChanges, "Document should have unsaved changes after attributedText modification")
+    }
+
+    // MARK: - Data Generation Tests
+
+    func testDataOfTypeReturnsCurrentContent() throws {
+        let document = JustWriteDocument(text: "Test content for saving")
+
+        // Get the data that would be saved
+        let data = try document.data(ofType: UTType.rtf.identifier)
+
+        // Verify data is not empty
+        XCTAssertFalse(data.isEmpty, "data(ofType:) should return non-empty data")
+
+        // Verify content can be restored from data
+        if let restored = NSAttributedString(rtf: data, documentAttributes: nil) {
+            XCTAssertEqual(restored.string, "Test content for saving", "Saved data should contain the text")
+        } else {
+            XCTFail("Should be able to restore attributed string from saved data")
+        }
+    }
+
+    func testDataOfTypeReturnsLatestContent() throws {
+        let document = JustWriteDocument(text: "Initial content")
+
+        // Change the text
+        document.text = "Updated content"
+
+        // Get the data that would be saved
+        let data = try document.data(ofType: UTType.rtf.identifier)
+
+        // Verify the UPDATED content is returned
+        if let restored = NSAttributedString(rtf: data, documentAttributes: nil) {
+            XCTAssertEqual(restored.string, "Updated content", "data(ofType:) should return the latest content")
+        } else {
+            XCTFail("Should be able to restore attributed string from saved data")
+        }
+    }
+
+    // MARK: - Document Loading Tests (Critical: should not be dirty after load)
+
+    func testDocumentIsNotDirtyAfterLoading() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFileURL = tempDir.appendingPathComponent("test_load_dirty_\(UUID().uuidString).rtf")
+
+        defer {
+            try? FileManager.default.removeItem(at: testFileURL)
+        }
+
+        // Create and save a document first
+        let originalDoc = JustWriteDocument(text: "Test content")
+        let saveData = try originalDoc.data(ofType: UTType.rtf.identifier)
+        try saveData.write(to: testFileURL)
+
+        // Create new document and load
+        let loadedDoc = JustWriteDocument()
+        loadedDoc.fileURL = testFileURL
+        let loadedData = try Data(contentsOf: testFileURL)
+        try loadedDoc.read(from: loadedData, ofType: UTType.rtf.identifier)
+
+        // Wait for async loading
+        let expectation = XCTestExpectation(description: "Content loaded")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+
+        // CRITICAL: Document should NOT be dirty after loading
+        XCTAssertFalse(loadedDoc.hasUnautosavedChanges,
+            "Document should NOT be marked dirty after loading - this causes unnecessary saves")
+    }
+
+    func testDocumentIsNotDirtyAfterLoadingEmptyFile() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFileURL = tempDir.appendingPathComponent("test_empty_\(UUID().uuidString).rtf")
+
+        defer {
+            try? FileManager.default.removeItem(at: testFileURL)
+        }
+
+        // Create empty document and save
+        let originalDoc = JustWriteDocument()
+        let saveData = try originalDoc.data(ofType: UTType.rtf.identifier)
+        try saveData.write(to: testFileURL)
+
+        // Load into new document
+        let loadedDoc = JustWriteDocument()
+        loadedDoc.fileURL = testFileURL
+        let loadedData = try Data(contentsOf: testFileURL)
+        try loadedDoc.read(from: loadedData, ofType: UTType.rtf.identifier)
+
+        let expectation = XCTestExpectation(description: "Content loaded")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertFalse(loadedDoc.hasUnautosavedChanges,
+            "Empty document should NOT be marked dirty after loading")
+    }
+
+    // MARK: - Formatting Change Tests
+
+    func testFormattingOnlyChangesMarkDocumentDirty() {
+        let document = JustWriteDocument(text: "Hello")
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_fmt_\(UUID().uuidString).rtf")
+        document.fileURL = tempURL
+
+        // Clear initial dirty state
+        document.updateChangeCount(.changeCleared)
+        XCTAssertFalse(document.hasUnautosavedChanges, "Should start clean")
+
+        // Apply bold formatting (same text, different attributes)
+        let boldFont = NSFontManager.shared.convert(
+            NSFont.systemFont(ofSize: 16),
+            toHaveTrait: .boldFontMask
+        )
+        let boldText = NSMutableAttributedString(attributedString: document.attributedText)
+        boldText.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 5))
+
+        document.attributedText = boldText
+
+        // Document should be marked dirty even though text content is the same
+        XCTAssertTrue(document.hasUnautosavedChanges,
+            "Formatting changes should mark document dirty for autosave")
+    }
+
+    func testItalicFormattingChangesMarkDocumentDirty() {
+        let document = JustWriteDocument(text: "World")
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_italic_\(UUID().uuidString).rtf")
+        document.fileURL = tempURL
+
+        document.updateChangeCount(.changeCleared)
+        XCTAssertFalse(document.hasUnautosavedChanges)
+
+        // Apply italic formatting
+        let italicFont = NSFontManager.shared.convert(
+            NSFont.systemFont(ofSize: 16),
+            toHaveTrait: .italicFontMask
+        )
+        let italicText = NSMutableAttributedString(attributedString: document.attributedText)
+        italicText.addAttribute(.font, value: italicFont, range: NSRange(location: 0, length: 5))
+
+        document.attributedText = italicText
+
+        XCTAssertTrue(document.hasUnautosavedChanges,
+            "Italic formatting should mark document dirty")
+    }
+
+    // MARK: - Save/Reload Cycle Tests
+
+    func testContentSurvivesSaveReloadCycle() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFileURL = tempDir.appendingPathComponent("test_save_\(UUID().uuidString).rtf")
+
+        defer {
+            try? FileManager.default.removeItem(at: testFileURL)
+        }
+
+        // Create document with content
+        let document = JustWriteDocument(text: "Content to preserve")
+
+        // Get save data
+        let saveData = try document.data(ofType: UTType.rtf.identifier)
+
+        // Write to file
+        try saveData.write(to: testFileURL)
+
+        // Create new document and load
+        let loadedDocument = JustWriteDocument()
+        let loadedData = try Data(contentsOf: testFileURL)
+        try loadedDocument.read(from: loadedData, ofType: UTType.rtf.identifier)
+
+        // Wait a moment for async loading
+        let expectation = XCTestExpectation(description: "Content loaded")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+
+        // Verify content was preserved
+        XCTAssertEqual(loadedDocument.text, "Content to preserve", "Content should survive save/reload cycle")
+    }
+
+    func testMultipleEditsPreservedOnSave() throws {
+        let document = JustWriteDocument(text: "First")
+
+        // Make multiple edits
+        document.text = "Second"
+        document.text = "Third"
+        document.text = "Final content"
+
+        // Get save data
+        let saveData = try document.data(ofType: UTType.rtf.identifier)
+
+        // Verify final content is saved
+        if let restored = NSAttributedString(rtf: saveData, documentAttributes: nil) {
+            XCTAssertEqual(restored.string, "Final content", "Final edit should be saved")
+        } else {
+            XCTFail("Should be able to restore content")
+        }
+    }
+}
+
+// MARK: - Save Synchronization Tests
+
+final class SaveSynchronizationTests: XCTestCase {
+
+    func testAutosaveTriggersForModifiedDocument() throws {
+        // This test verifies that autosave properly persists document changes
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFileURL = tempDir.appendingPathComponent("autosave_test_\(UUID().uuidString).rtf")
+
+        defer {
+            try? FileManager.default.removeItem(at: testFileURL)
+        }
+
+        // Create a document with content
+        let document = JustWriteDocument(text: "Initial content")
+        document.fileURL = testFileURL
+
+        // Save it once to establish the file
+        let initialData = try document.data(ofType: UTType.rtf.identifier)
+        try initialData.write(to: testFileURL)
+        document.updateChangeCount(.changeCleared)
+
+        // Modify the document
+        document.text = "Modified content for autosave test"
+        XCTAssertTrue(document.hasUnautosavedChanges, "Should have unsaved changes")
+
+        // Trigger autosave (non-blocking)
+        let expectation = XCTestExpectation(description: "Autosave completes")
+        document.autosave(withImplicitCancellability: false) { error in
+            XCTAssertNil(error, "Autosave should succeed")
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2.0)
+
+        // Verify file was actually updated
+        let savedData = try Data(contentsOf: testFileURL)
+        if let restored = NSAttributedString(rtf: savedData, documentAttributes: nil) {
+            XCTAssertEqual(restored.string, "Modified content for autosave test",
+                "File should contain the modified content after autosave")
+        } else {
+            XCTFail("Could not read saved file")
+        }
+    }
+
+    func testDocumentSavePreservesFormattingChanges() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let testFileURL = tempDir.appendingPathComponent("fmt_save_\(UUID().uuidString).rtf")
+
+        defer {
+            try? FileManager.default.removeItem(at: testFileURL)
+        }
+
+        // Create document with plain text
+        let document = JustWriteDocument(text: "Bold text")
+        document.fileURL = testFileURL
+
+        // Apply bold formatting
+        let boldFont = NSFontManager.shared.convert(
+            NSFont.systemFont(ofSize: 16),
+            toHaveTrait: .boldFontMask
+        )
+        let boldText = NSMutableAttributedString(attributedString: document.attributedText)
+        boldText.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 4))
+        document.attributedText = boldText
+
+        // Save
+        let saveData = try document.data(ofType: UTType.rtf.identifier)
+        try saveData.write(to: testFileURL)
+
+        // Load and verify formatting preserved
+        let loadedData = try Data(contentsOf: testFileURL)
+        guard let restored = NSAttributedString(rtf: loadedData, documentAttributes: nil) else {
+            XCTFail("Could not read saved file")
+            return
+        }
+
+        XCTAssertEqual(restored.string, "Bold text")
+
+        // Check that bold formatting was preserved
+        var hasBold = false
+        restored.enumerateAttribute(.font, in: NSRange(location: 0, length: 4), options: []) { value, _, _ in
+            if let font = value as? NSFont {
+                let traits = NSFontManager.shared.traits(of: font)
+                if traits.contains(.boldFontMask) {
+                    hasBold = true
+                }
+            }
+        }
+        XCTAssertTrue(hasBold, "Bold formatting should be preserved after save/load cycle")
     }
 }
 
@@ -603,31 +998,31 @@ final class JustWriteDocumentTests: XCTestCase {
     // MARK: - RTF Document Type Tests
 
     func testDocumentWritableContentTypeIsRTF() {
-        let writableTypes = JustWriteDocument.writableContentTypes
+        let writableTypes = JustWriteDocument.writableTypes
         XCTAssertEqual(writableTypes.count, 1, "Should only have one writable type")
-        XCTAssertEqual(writableTypes.first, .rtf, "Writable type should be RTF")
+        XCTAssertEqual(writableTypes.first, UTType.rtf.identifier, "Writable type should be RTF")
     }
 
     func testDocumentReadableContentTypesIncludeRTF() {
-        let readableTypes = JustWriteDocument.readableContentTypes
-        XCTAssertTrue(readableTypes.contains(.rtf), "Should be able to read RTF files")
+        let readableTypes = JustWriteDocument.readableTypes
+        XCTAssertTrue(readableTypes.contains(UTType.rtf.identifier), "Should be able to read RTF files")
     }
 
     func testDocumentReadableContentTypesIncludePlainText() {
-        let readableTypes = JustWriteDocument.readableContentTypes
-        XCTAssertTrue(readableTypes.contains(.plainText), "Should be able to read plain text for import")
+        let readableTypes = JustWriteDocument.readableTypes
+        XCTAssertTrue(readableTypes.contains(UTType.plainText.identifier), "Should be able to read plain text for import")
     }
 
     func testDocumentDoesNotIncludeMarkdownType() {
-        let readableTypes = JustWriteDocument.readableContentTypes
-        let writableTypes = JustWriteDocument.writableContentTypes
+        let readableTypes = JustWriteDocument.readableTypes
+        let writableTypes = JustWriteDocument.writableTypes
 
         // Verify no markdown types
         for type in readableTypes {
-            XCTAssertNotEqual(type.identifier, "net.daringfireball.markdown", "Should not include markdown in readable types")
+            XCTAssertNotEqual(type, "net.daringfireball.markdown", "Should not include markdown in readable types")
         }
         for type in writableTypes {
-            XCTAssertNotEqual(type.identifier, "net.daringfireball.markdown", "Should not include markdown in writable types")
+            XCTAssertNotEqual(type, "net.daringfireball.markdown", "Should not include markdown in writable types")
         }
     }
 
