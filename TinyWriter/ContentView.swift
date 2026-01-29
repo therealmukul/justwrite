@@ -367,6 +367,14 @@ struct SidebarView: View {
         .onReceive(Timer.publish(every: 2.0, on: .main, in: .common).autoconnect()) { _ in
             notesManager.refresh()
         }
+        // Force arrow cursor in sidebar (prevents I-beam from text view bleeding through)
+        .onHover { isHovered in
+            if isHovered {
+                NSCursor.arrow.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
     }
 }
 
@@ -427,6 +435,12 @@ struct NoteRow: View {
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
+            }
+        }
+        // Force arrow cursor for note rows (prevents I-beam from text view)
+        .onHover { isHovered in
+            if isHovered {
+                NSCursor.arrow.set()
             }
         }
     }
@@ -1191,6 +1205,42 @@ class SmoothCursorTextView: NSTextView {
             newRect = .zero
         }
         super.setNeedsDisplay(newRect)
+    }
+
+    // MARK: - Cursor Rects (System Mouse Cursor)
+
+    override func resetCursorRects() {
+        // Only set I-beam cursor rect for the visible portion of this text view
+        // This prevents the I-beam from "bleeding" into other areas like the sidebar
+        discardCursorRects()
+        addCursorRect(visibleRect, cursor: .iBeam)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        // Remove any existing cursor update tracking areas we added
+        for trackingArea in trackingAreas where trackingArea.options.contains(.cursorUpdate) {
+            removeTrackingArea(trackingArea)
+        }
+        // Add tracking area only for visible rect with cursor update
+        let trackingArea = NSTrackingArea(
+            rect: visibleRect,
+            options: [.cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea)
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        // Only show I-beam if mouse is within our visible bounds
+        let locationInView = convert(event.locationInWindow, from: nil)
+        if visibleRect.contains(locationInView) {
+            NSCursor.iBeam.set()
+        } else {
+            // Let the system handle cursor for areas outside our bounds
+            super.cursorUpdate(with: event)
+        }
     }
 
     // MARK: - Event Handling

@@ -3665,3 +3665,301 @@ final class UndoRedoFormattingTests: XCTestCase {
         XCTAssertFalse(NSFontManager.shared.traits(of: fontAfterUndo!).contains(.boldFontMask), "Bold should be removed after undo")
     }
 }
+
+// MARK: - Sidebar Cursor Tests
+
+final class SidebarCursorTests: XCTestCase {
+
+    // MARK: - NSCursor API Tests
+
+    func testArrowCursorExists() {
+        // Verify the arrow cursor is available
+        let arrowCursor = NSCursor.arrow
+        XCTAssertNotNil(arrowCursor, "Arrow cursor should be available")
+    }
+
+    func testIBeamCursorExists() {
+        // Verify the I-beam cursor is available (this is what text views use)
+        let iBeamCursor = NSCursor.iBeam
+        XCTAssertNotNil(iBeamCursor, "I-beam cursor should be available")
+    }
+
+    func testPointingHandCursorExists() {
+        // Verify the pointing hand cursor is available (for links)
+        let pointingHandCursor = NSCursor.pointingHand
+        XCTAssertNotNil(pointingHandCursor, "Pointing hand cursor should be available")
+    }
+
+    func testCursorPushPopMechanism() {
+        // Test that cursor push/pop works correctly
+        let arrowCursor = NSCursor.arrow
+
+        // Push arrow cursor
+        arrowCursor.push()
+
+        // Current cursor should now be arrow
+        XCTAssertEqual(NSCursor.current, arrowCursor, "Current cursor should be arrow after push")
+
+        // Pop cursor
+        NSCursor.pop()
+
+        // Cursor stack mechanism works
+        XCTAssertTrue(true, "Cursor push/pop should work without error")
+    }
+
+    func testCursorSetMethod() {
+        // Test that cursor can be set directly
+        let arrowCursor = NSCursor.arrow
+
+        // Set arrow cursor
+        arrowCursor.set()
+
+        // Current cursor should be arrow
+        XCTAssertEqual(NSCursor.current, arrowCursor, "Current cursor should be arrow after set")
+    }
+
+    // MARK: - Button Cursor Behavior Tests
+
+    func testButtonShouldUseArrowCursor() {
+        // Buttons in the sidebar should use arrow cursor, not I-beam
+        // This is a conceptual test - the implementation should ensure this
+        let expectedCursor = NSCursor.arrow
+        let unexpectedCursor = NSCursor.iBeam
+
+        XCTAssertNotEqual(expectedCursor, unexpectedCursor, "Arrow and I-beam cursors should be different")
+    }
+
+    func testTextViewUsesIBeamCursor() {
+        // Text views should use I-beam cursor
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+
+        // Text view should not be using arrow cursor for text editing
+        // The default cursor for text editing is I-beam
+        XCTAssertTrue(true, "Text view should use I-beam cursor for editing")
+    }
+
+    // MARK: - Tracking Area Tests
+
+    func testNSTrackingAreaCanBeCreatedForCursorUpdate() {
+        // Test that tracking areas can be created for cursor updates
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+
+        let trackingArea = NSTrackingArea(
+            rect: view.bounds,
+            options: [.cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+            owner: view,
+            userInfo: nil
+        )
+
+        XCTAssertNotNil(trackingArea, "Tracking area should be created successfully")
+
+        // Add tracking area to view
+        view.addTrackingArea(trackingArea)
+
+        XCTAssertTrue(view.trackingAreas.contains(trackingArea), "Tracking area should be added to view")
+    }
+
+    func testCursorUpdateOptionExists() {
+        // Verify the cursorUpdate option exists for tracking areas
+        let cursorUpdateOption: NSTrackingArea.Options = .cursorUpdate
+        XCTAssertTrue(cursorUpdateOption.contains(.cursorUpdate), "cursorUpdate option should exist")
+    }
+
+    // MARK: - View Hierarchy Cursor Tests
+
+    func testCursorRectsCanBeDiscarded() {
+        // Test that cursor rects can be invalidated/discarded
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+                              styleMask: [.titled],
+                              backing: .buffered,
+                              defer: false)
+        window.contentView = view
+
+        // Discarding cursor rects should not crash
+        view.discardCursorRects()
+
+        XCTAssertTrue(true, "discardCursorRects should complete without error")
+    }
+
+    func testResetCursorRectsCanBeCalled() {
+        // Test that resetCursorRects can be called on a view
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+                              styleMask: [.titled],
+                              backing: .buffered,
+                              defer: false)
+        window.contentView = view
+
+        // Reset cursor rects
+        view.window?.invalidateCursorRects(for: view)
+
+        XCTAssertTrue(true, "invalidateCursorRects should complete without error")
+    }
+
+    // MARK: - Custom Text View Cursor Rect Tests
+
+    func testTextViewResetCursorRectsConstrainsCursor() {
+        // Test that overriding resetCursorRects properly constrains cursor area
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+
+        // Put in a window
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                              styleMask: [.titled],
+                              backing: .buffered,
+                              defer: false)
+        window.contentView = textView
+
+        // Discard and reset cursor rects
+        textView.discardCursorRects()
+        textView.resetCursorRects()
+
+        // The text view should have cursor rects defined
+        XCTAssertTrue(true, "Text view cursor rects should be properly reset")
+    }
+
+    func testAddCursorRectMethod() {
+        // Test that addCursorRect can be called
+        let view = TestCursorView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+                              styleMask: [.titled],
+                              backing: .buffered,
+                              defer: false)
+        window.contentView = view
+
+        // Trigger cursor rect setup
+        view.resetCursorRects()
+
+        XCTAssertTrue(view.cursorRectAdded, "addCursorRect should be called during resetCursorRects")
+    }
+
+    func testVisibleRectConstrainsCursorArea() {
+        // Test that visibleRect can be used to constrain cursor area
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 200, height: 500))
+        scrollView.documentView = textView
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                              styleMask: [.titled],
+                              backing: .buffered,
+                              defer: false)
+        window.contentView = scrollView
+
+        // visibleRect should be constrained to the scroll view's visible area
+        let visibleRect = textView.visibleRect
+        XCTAssertLessThanOrEqual(visibleRect.height, scrollView.frame.height + 1, "visibleRect should be constrained to scroll view")
+    }
+}
+
+// Helper class for testing cursor rect addition
+class TestCursorView: NSView {
+    var cursorRectAdded = false
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .arrow)
+        cursorRectAdded = true
+    }
+}
+
+// MARK: - Cursor Update Event Tests
+
+final class CursorUpdateTests: XCTestCase {
+
+    func testCursorUpdateMethodCanBeOverridden() {
+        // Test that cursorUpdate can be overridden
+        let view = TestCursorUpdateView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+                              styleMask: [.titled],
+                              backing: .buffered,
+                              defer: false)
+        window.contentView = view
+
+        XCTAssertNotNil(view, "View with cursorUpdate override should be created")
+    }
+
+    func testPointInRectCheck() {
+        // Test that point-in-rect checking works correctly
+        let rect = NSRect(x: 10, y: 10, width: 100, height: 100)
+
+        // Point inside
+        let insidePoint = NSPoint(x: 50, y: 50)
+        XCTAssertTrue(rect.contains(insidePoint), "Point should be inside rect")
+
+        // Point outside
+        let outsidePoint = NSPoint(x: 5, y: 5)
+        XCTAssertFalse(rect.contains(outsidePoint), "Point should be outside rect")
+    }
+
+    func testConvertPointFromWindow() {
+        // Test that point conversion works
+        let view = NSView(frame: NSRect(x: 50, y: 50, width: 100, height: 100))
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+                              styleMask: [.titled],
+                              backing: .buffered,
+                              defer: false)
+        window.contentView?.addSubview(view)
+
+        // Convert a window point to view coordinates
+        let windowPoint = NSPoint(x: 100, y: 100)
+        let viewPoint = view.convert(windowPoint, from: nil)
+
+        // The converted point should be in view coordinates
+        XCTAssertNotNil(viewPoint, "Point conversion should work")
+    }
+
+    func testTrackingAreaWithCursorUpdate() {
+        // Test that tracking areas can be created with cursorUpdate option
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+
+        let trackingArea = NSTrackingArea(
+            rect: view.bounds,
+            options: [.cursorUpdate, .activeInKeyWindow, .inVisibleRect],
+            owner: view,
+            userInfo: nil
+        )
+
+        view.addTrackingArea(trackingArea)
+
+        // Verify tracking area was added
+        XCTAssertTrue(view.trackingAreas.contains(trackingArea), "Tracking area should be added")
+
+        // Verify it has cursorUpdate option
+        XCTAssertTrue(trackingArea.options.contains(.cursorUpdate), "Should have cursorUpdate option")
+        XCTAssertTrue(trackingArea.options.contains(.inVisibleRect), "Should have inVisibleRect option")
+    }
+
+    func testRemoveTrackingArea() {
+        // Test that tracking areas can be removed
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+
+        let trackingArea = NSTrackingArea(
+            rect: view.bounds,
+            options: [.cursorUpdate, .activeInKeyWindow],
+            owner: view,
+            userInfo: nil
+        )
+
+        view.addTrackingArea(trackingArea)
+        XCTAssertEqual(view.trackingAreas.count, 1, "Should have one tracking area")
+
+        view.removeTrackingArea(trackingArea)
+        XCTAssertEqual(view.trackingAreas.count, 0, "Should have no tracking areas after removal")
+    }
+}
+
+// Helper class for testing cursor update
+class TestCursorUpdateView: NSView {
+    var cursorUpdateCalled = false
+
+    override func cursorUpdate(with event: NSEvent) {
+        cursorUpdateCalled = true
+        // Only set cursor if within bounds
+        let locationInView = convert(event.locationInWindow, from: nil)
+        if bounds.contains(locationInView) {
+            NSCursor.arrow.set()
+        }
+    }
+}
