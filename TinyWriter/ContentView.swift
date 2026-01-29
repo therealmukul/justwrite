@@ -330,6 +330,7 @@ struct SidebarView: View {
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
+                    .contentShape(Rectangle()) // Make entire area clickable
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 10))
