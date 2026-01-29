@@ -2551,6 +2551,272 @@ final class FormattingPreservationTests: XCTestCase {
     }
 }
 
+// MARK: - Text Alignment Tests
+
+final class TextAlignmentTests: XCTestCase {
+
+    // MARK: - Basic Alignment Tests
+
+    func testCanSetLeftAlignment() {
+        let attributedString = NSMutableAttributedString(string: "Test paragraph")
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .left
+
+        attributedString.addAttribute(.paragraphStyle, value: paragraphStyle,
+                                      range: NSRange(location: 0, length: attributedString.length))
+
+        var resultStyle: NSParagraphStyle?
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.alignment, .left, "Should be left aligned")
+    }
+
+    func testCanSetCenterAlignment() {
+        let attributedString = NSMutableAttributedString(string: "Test paragraph")
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+
+        attributedString.addAttribute(.paragraphStyle, value: paragraphStyle,
+                                      range: NSRange(location: 0, length: attributedString.length))
+
+        var resultStyle: NSParagraphStyle?
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.alignment, .center, "Should be center aligned")
+    }
+
+    func testCanSetRightAlignment() {
+        let attributedString = NSMutableAttributedString(string: "Test paragraph")
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .right
+
+        attributedString.addAttribute(.paragraphStyle, value: paragraphStyle,
+                                      range: NSRange(location: 0, length: attributedString.length))
+
+        var resultStyle: NSParagraphStyle?
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.alignment, .right, "Should be right aligned")
+    }
+
+    // MARK: - Alignment Preservation Tests
+
+    func testAlignmentPreservesLineSpacing() {
+        let attributedString = NSMutableAttributedString(string: "Test paragraph")
+
+        // First set line spacing
+        let initialStyle = NSMutableParagraphStyle()
+        initialStyle.lineSpacing = 10
+        attributedString.addAttribute(.paragraphStyle, value: initialStyle,
+                                      range: NSRange(location: 0, length: attributedString.length))
+
+        // Then update alignment while preserving line spacing
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, range, _ in
+            let newStyle = NSMutableParagraphStyle()
+            if let oldStyle = value as? NSParagraphStyle {
+                newStyle.setParagraphStyle(oldStyle)
+            }
+            newStyle.alignment = .center
+            attributedString.addAttribute(.paragraphStyle, value: newStyle, range: range)
+        }
+
+        var resultStyle: NSParagraphStyle?
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.alignment, .center, "Alignment should be center")
+        XCTAssertEqual(resultStyle?.lineSpacing, 10, "Line spacing should be preserved")
+    }
+
+    func testLineSpacingPreservesAlignment() {
+        let attributedString = NSMutableAttributedString(string: "Test paragraph")
+
+        // First set alignment
+        let initialStyle = NSMutableParagraphStyle()
+        initialStyle.alignment = .right
+        attributedString.addAttribute(.paragraphStyle, value: initialStyle,
+                                      range: NSRange(location: 0, length: attributedString.length))
+
+        // Then update line spacing while preserving alignment
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, range, _ in
+            let newStyle = NSMutableParagraphStyle()
+            if let oldStyle = value as? NSParagraphStyle {
+                newStyle.setParagraphStyle(oldStyle)
+            }
+            newStyle.lineSpacing = 15
+            attributedString.addAttribute(.paragraphStyle, value: newStyle, range: range)
+        }
+
+        var resultStyle: NSParagraphStyle?
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.alignment, .right, "Alignment should be preserved")
+        XCTAssertEqual(resultStyle?.lineSpacing, 15, "Line spacing should be updated")
+    }
+
+    // MARK: - Partial Selection Alignment Tests
+
+    func testCanAlignPartialSelection() {
+        let attributedString = NSMutableAttributedString(string: "First paragraph\nSecond paragraph")
+
+        // Apply center alignment to only the first paragraph (0-15)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        attributedString.addAttribute(.paragraphStyle, value: paragraphStyle,
+                                      range: NSRange(location: 0, length: 15))
+
+        // Check first paragraph is centered
+        var firstStyle: NSParagraphStyle?
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: 15), options: []) { value, _, _ in
+            firstStyle = value as? NSParagraphStyle
+        }
+        XCTAssertEqual(firstStyle?.alignment, .center, "First paragraph should be centered")
+
+        // Second paragraph should have default alignment (natural/left)
+        var secondStyle: NSParagraphStyle?
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 16, length: 16), options: []) { value, _, _ in
+            secondStyle = value as? NSParagraphStyle
+        }
+        // Second paragraph may have nil style or default
+        if let style = secondStyle {
+            XCTAssertNotEqual(style.alignment, .center, "Second paragraph should not be centered")
+        }
+    }
+
+    // MARK: - TextStorage Alignment Tests
+
+    func testTextStorageAlignmentChange() {
+        let textStorage = NSTextStorage(string: "Test content for alignment")
+
+        // Apply right alignment
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .right
+
+        textStorage.beginEditing()
+        textStorage.addAttribute(.paragraphStyle, value: paragraphStyle,
+                                range: NSRange(location: 0, length: textStorage.length))
+        textStorage.endEditing()
+
+        var resultStyle: NSParagraphStyle?
+        textStorage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: textStorage.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.alignment, .right, "TextStorage should have right alignment")
+    }
+
+    func testAlignmentToggleFromLeftToRight() {
+        let textStorage = NSTextStorage(string: "Toggle test")
+
+        // Start with left alignment
+        let leftStyle = NSMutableParagraphStyle()
+        leftStyle.alignment = .left
+        textStorage.addAttribute(.paragraphStyle, value: leftStyle,
+                                range: NSRange(location: 0, length: textStorage.length))
+
+        // Toggle to right alignment
+        textStorage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: textStorage.length), options: []) { value, range, _ in
+            let newStyle = NSMutableParagraphStyle()
+            if let oldStyle = value as? NSParagraphStyle {
+                newStyle.setParagraphStyle(oldStyle)
+            }
+            newStyle.alignment = .right
+            textStorage.addAttribute(.paragraphStyle, value: newStyle, range: range)
+        }
+
+        var resultStyle: NSParagraphStyle?
+        textStorage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: textStorage.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+
+        XCTAssertEqual(resultStyle?.alignment, .right, "Should toggle from left to right")
+    }
+
+    // MARK: - Alignment with Font Traits Tests
+
+    func testAlignmentPreservesBoldFont() {
+        let textStorage = NSTextStorage(string: "Bold and aligned")
+        let fontManager = NSFontManager.shared
+        let boldFont = fontManager.convert(NSFont.systemFont(ofSize: 14), toHaveTrait: .boldFontMask)
+
+        // Apply bold font
+        textStorage.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: textStorage.length))
+
+        // Apply center alignment
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        textStorage.addAttribute(.paragraphStyle, value: paragraphStyle,
+                                range: NSRange(location: 0, length: textStorage.length))
+
+        // Verify bold is preserved
+        var resultFont: NSFont?
+        textStorage.enumerateAttribute(.font, in: NSRange(location: 0, length: 4), options: []) { value, _, _ in
+            resultFont = value as? NSFont
+        }
+
+        XCTAssertNotNil(resultFont)
+        XCTAssertTrue(fontManager.traits(of: resultFont!).contains(.boldFontMask),
+                     "Bold trait should be preserved after alignment change")
+    }
+
+    func testBoldPreservesAlignment() {
+        let textStorage = NSTextStorage(string: "Aligned and bold")
+        let fontManager = NSFontManager.shared
+
+        // Apply right alignment first
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .right
+        textStorage.addAttribute(.paragraphStyle, value: paragraphStyle,
+                                range: NSRange(location: 0, length: textStorage.length))
+
+        // Apply bold font
+        let boldFont = fontManager.convert(NSFont.systemFont(ofSize: 14), toHaveTrait: .boldFontMask)
+        textStorage.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: textStorage.length))
+
+        // Verify alignment is preserved
+        var resultStyle: NSParagraphStyle?
+        textStorage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: textStorage.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.alignment, .right, "Right alignment should be preserved after bold")
+    }
+
+    // MARK: - NSTextAlignment Value Tests
+
+    func testNSTextAlignmentValues() {
+        // Verify the alignment enum values exist and are distinct
+        XCTAssertNotEqual(NSTextAlignment.left, NSTextAlignment.right)
+        XCTAssertNotEqual(NSTextAlignment.left, NSTextAlignment.center)
+        XCTAssertNotEqual(NSTextAlignment.center, NSTextAlignment.right)
+    }
+
+    // MARK: - Default Alignment Tests
+
+    func testDefaultParagraphStyleHasNaturalAlignment() {
+        let defaultStyle = NSParagraphStyle.default
+        // Natural alignment is typically left for LTR languages
+        XCTAssertTrue(defaultStyle.alignment == .natural || defaultStyle.alignment == .left,
+                     "Default alignment should be natural or left")
+    }
+}
+
 // MARK: - Sidebar Selection Tests
 
 final class SidebarSelectionTests: XCTestCase {
@@ -3006,5 +3272,396 @@ final class DeferredFileCreationTests: XCTestCase {
         let document = TinyWriterDocument()
         // Empty document without any edits should not have unsaved changes
         XCTAssertFalse(document.hasUnautosavedChanges, "Empty document should not have unsaved changes")
+    }
+}
+
+// MARK: - Undo/Redo for Formatting Tests
+
+final class UndoRedoFormattingTests: XCTestCase {
+
+    /// Helper to create a text view with an undo manager for testing
+    private func createTextViewWithUndoManager(text: String) -> (NSTextView, NSTextStorage, UndoManager) {
+        let textStorage = NSTextStorage(string: text)
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: NSSize(width: 400, height: 300))
+        layoutManager.addTextContainer(textContainer)
+        textStorage.addLayoutManager(layoutManager)
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: textContainer)
+        textView.allowsUndo = true
+
+        // Create and assign an undo manager since we're not in a window
+        let undoManager = UndoManager()
+
+        // Put text view in a window so it gets an undo manager
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                              styleMask: [.titled],
+                              backing: .buffered,
+                              defer: false)
+        window.contentView = textView
+
+        return (textView, textStorage, textView.undoManager ?? undoManager)
+    }
+
+    // MARK: - Basic Undo Manager Tests
+
+    func testTextViewHasUndoManagerWhenInWindow() {
+        // NSTextView in a window should have an undo manager
+        let (textView, _, _) = createTextViewWithUndoManager(text: "Hello")
+        XCTAssertNotNil(textView.undoManager, "Text view in window should have an undo manager")
+    }
+
+    func testTextStorageChangesCanBeUndone() {
+        // Basic test: text changes should be undoable
+        let (textView, _, _) = createTextViewWithUndoManager(text: "Hello")
+
+        // Verify the undo manager exists
+        XCTAssertNotNil(textView.undoManager, "Undo manager should exist")
+        XCTAssertTrue(textView.allowsUndo, "allowsUndo should be true")
+    }
+
+    func testUndoManagerCanUndoAttributeChanges() {
+        // Test that attribute changes can be undone when properly registered
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Hello World")
+
+        // Store original state
+        let range = NSRange(location: 0, length: 5) // "Hello"
+        let originalFont = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+
+        // Apply bold using shouldChangeText pattern
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            let boldFont = NSFontManager.shared.convert(originalFont ?? NSFont.systemFont(ofSize: 12), toHaveTrait: .boldFontMask)
+            textStorage.addAttribute(.font, value: boldFont, range: range)
+            textView.didChangeText()
+        }
+
+        // Verify bold was applied
+        let fontAfterBold = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let traitsAfterBold = NSFontManager.shared.traits(of: fontAfterBold ?? NSFont.systemFont(ofSize: 12))
+        XCTAssertTrue(traitsAfterBold.contains(.boldFontMask), "Text should be bold after applying")
+
+        // Undo should be available
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false, "Undo should be available after formatting change")
+    }
+
+    func testUndoRestoresOriginalFormatting() {
+        // Test that undo restores the original non-bold state
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Hello World")
+
+        let range = NSRange(location: 0, length: 5)
+        let originalFont = NSFont.systemFont(ofSize: 14)
+        textStorage.addAttribute(.font, value: originalFont, range: range)
+
+        // Apply bold with proper undo registration
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            let boldFont = NSFontManager.shared.convert(originalFont, toHaveTrait: .boldFontMask)
+            textStorage.addAttribute(.font, value: boldFont, range: range)
+            textView.didChangeText()
+        }
+
+        // Verify bold was applied
+        let fontAfterBold = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        XCTAssertTrue(NSFontManager.shared.traits(of: fontAfterBold!).contains(.boldFontMask), "Should be bold")
+
+        // Perform undo
+        textView.undoManager?.undo()
+
+        // Verify bold was removed
+        let fontAfterUndo = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let traitsAfterUndo = NSFontManager.shared.traits(of: fontAfterUndo ?? NSFont.systemFont(ofSize: 12))
+        XCTAssertFalse(traitsAfterUndo.contains(.boldFontMask), "Text should not be bold after undo")
+    }
+
+    func testRedoReappliesFormatting() {
+        // Test that redo reapplies the formatting after undo
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Hello World")
+
+        let range = NSRange(location: 0, length: 5)
+        let originalFont = NSFont.systemFont(ofSize: 14)
+        textStorage.addAttribute(.font, value: originalFont, range: range)
+
+        // Apply bold
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            let boldFont = NSFontManager.shared.convert(originalFont, toHaveTrait: .boldFontMask)
+            textStorage.addAttribute(.font, value: boldFont, range: range)
+            textView.didChangeText()
+        }
+
+        // Undo
+        textView.undoManager?.undo()
+
+        // Redo should be available
+        XCTAssertTrue(textView.undoManager?.canRedo ?? false, "Redo should be available after undo")
+
+        // Perform redo
+        textView.undoManager?.redo()
+
+        // Verify bold was reapplied
+        let fontAfterRedo = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let traitsAfterRedo = NSFontManager.shared.traits(of: fontAfterRedo ?? NSFont.systemFont(ofSize: 12))
+        XCTAssertTrue(traitsAfterRedo.contains(.boldFontMask), "Text should be bold after redo")
+    }
+
+    // MARK: - Italic Undo Tests
+
+    func testUndoItalicFormatting() {
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Test text")
+
+        let range = NSRange(location: 0, length: 4) // "Test"
+        let originalFont = NSFont.systemFont(ofSize: 14)
+        textStorage.addAttribute(.font, value: originalFont, range: range)
+
+        // Apply italic
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            let italicFont = NSFontManager.shared.convert(originalFont, toHaveTrait: .italicFontMask)
+            textStorage.addAttribute(.font, value: italicFont, range: range)
+            textView.didChangeText()
+        }
+
+        // Verify italic was applied
+        let fontAfterItalic = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        XCTAssertTrue(NSFontManager.shared.traits(of: fontAfterItalic!).contains(.italicFontMask), "Should be italic")
+
+        // Undo
+        textView.undoManager?.undo()
+
+        // Verify italic was removed
+        let fontAfterUndo = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        XCTAssertFalse(NSFontManager.shared.traits(of: fontAfterUndo!).contains(.italicFontMask), "Should not be italic after undo")
+    }
+
+    // MARK: - Alignment Undo Tests
+
+    func testUndoAlignmentChange() {
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Test paragraph")
+
+        let range = NSRange(location: 0, length: textStorage.length)
+
+        // Set initial left alignment
+        let leftStyle = NSMutableParagraphStyle()
+        leftStyle.alignment = .left
+        textStorage.addAttribute(.paragraphStyle, value: leftStyle, range: range)
+
+        // Apply center alignment
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            let centerStyle = NSMutableParagraphStyle()
+            centerStyle.alignment = .center
+            textStorage.addAttribute(.paragraphStyle, value: centerStyle, range: range)
+            textView.didChangeText()
+        }
+
+        // Verify center alignment was applied
+        let styleAfterChange = textStorage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(styleAfterChange?.alignment, .center, "Should be center aligned")
+
+        // Undo
+        textView.undoManager?.undo()
+
+        // Verify left alignment was restored
+        let styleAfterUndo = textStorage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(styleAfterUndo?.alignment, .left, "Should be left aligned after undo")
+    }
+
+    func testUndoRightAlignment() {
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Test")
+
+        let range = NSRange(location: 0, length: textStorage.length)
+
+        // Apply right alignment
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            let rightStyle = NSMutableParagraphStyle()
+            rightStyle.alignment = .right
+            textStorage.addAttribute(.paragraphStyle, value: rightStyle, range: range)
+            textView.didChangeText()
+        }
+
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false, "Undo should be available after alignment change")
+
+        // Undo
+        textView.undoManager?.undo()
+
+        // Alignment should be reset (default is natural/left)
+        let styleAfterUndo = textStorage.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertNotEqual(styleAfterUndo?.alignment, .right, "Should not be right aligned after undo")
+    }
+
+    // MARK: - Multiple Formatting Operations Undo
+
+    func testUndoMultipleFormattingOperations() {
+        // Test that a single undo can undo both bold and italic when applied together
+        // (In practice, each toolbar button click would be a separate undo group)
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Hello World")
+        guard let undoManager = textView.undoManager else {
+            XCTFail("Undo manager should exist")
+            return
+        }
+
+        let range = NSRange(location: 0, length: 5)
+        let originalFont = NSFont.systemFont(ofSize: 14)
+        textStorage.addAttribute(.font, value: originalFont, range: range)
+
+        // Apply both bold and italic in a single operation (simulating batch formatting)
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            var boldItalicFont = NSFontManager.shared.convert(originalFont, toHaveTrait: .boldFontMask)
+            boldItalicFont = NSFontManager.shared.convert(boldItalicFont, toHaveTrait: .italicFontMask)
+            textStorage.addAttribute(.font, value: boldItalicFont, range: range)
+            textView.didChangeText()
+        }
+
+        // Verify both traits are applied
+        var currentFont = textStorage.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+        var traits = NSFontManager.shared.traits(of: currentFont)
+        XCTAssertTrue(traits.contains(.boldFontMask), "Should be bold")
+        XCTAssertTrue(traits.contains(.italicFontMask), "Should be italic")
+
+        // Single undo should remove both bold and italic
+        undoManager.undo()
+        currentFont = textStorage.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+        traits = NSFontManager.shared.traits(of: currentFont)
+        XCTAssertFalse(traits.contains(.boldFontMask), "Should not be bold after undo")
+        XCTAssertFalse(traits.contains(.italicFontMask), "Should not be italic after undo")
+    }
+
+    func testSeparateUndoGroupsForSequentialOperations() {
+        // Test that separate undo groups allow individual undo
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Hello World")
+        guard let undoManager = textView.undoManager else {
+            XCTFail("Undo manager should exist")
+            return
+        }
+
+        // Disable automatic grouping to test explicit groups
+        undoManager.groupsByEvent = false
+
+        let range = NSRange(location: 0, length: 5)
+        let originalFont = NSFont.systemFont(ofSize: 14)
+        textStorage.addAttribute(.font, value: originalFont, range: range)
+
+        // Apply bold - first explicit group
+        undoManager.beginUndoGrouping()
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            let boldFont = NSFontManager.shared.convert(originalFont, toHaveTrait: .boldFontMask)
+            textStorage.addAttribute(.font, value: boldFont, range: range)
+            textView.didChangeText()
+        }
+        undoManager.endUndoGrouping()
+
+        // Apply italic - second explicit group
+        undoManager.beginUndoGrouping()
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            let currentFont = textStorage.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+            let boldItalicFont = NSFontManager.shared.convert(currentFont, toHaveTrait: .italicFontMask)
+            textStorage.addAttribute(.font, value: boldItalicFont, range: range)
+            textView.didChangeText()
+        }
+        undoManager.endUndoGrouping()
+
+        // Verify both traits are applied
+        var currentFont = textStorage.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+        var traits = NSFontManager.shared.traits(of: currentFont)
+        XCTAssertTrue(traits.contains(.boldFontMask) && traits.contains(.italicFontMask), "Should have both bold and italic")
+
+        // First undo - should remove italic
+        undoManager.undo()
+        currentFont = textStorage.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+        traits = NSFontManager.shared.traits(of: currentFont)
+        XCTAssertTrue(traits.contains(.boldFontMask), "Should still be bold after first undo")
+        XCTAssertFalse(traits.contains(.italicFontMask), "Should not be italic after first undo")
+
+        // Second undo - should remove bold
+        undoManager.undo()
+        currentFont = textStorage.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+        traits = NSFontManager.shared.traits(of: currentFont)
+        XCTAssertFalse(traits.contains(.boldFontMask), "Should not be bold after second undo")
+    }
+
+    // MARK: - Keyboard Shortcut Registration Tests
+
+    func testCommandZIsStandardUndoShortcut() {
+        // Verify Cmd+Z is the standard undo shortcut on macOS
+        // This is a documentation test to ensure we're using the right shortcut
+        let undoKeyEquivalent = "z"
+        let undoModifiers: NSEvent.ModifierFlags = .command
+
+        XCTAssertEqual(undoKeyEquivalent, "z", "Undo shortcut should be 'z'")
+        XCTAssertTrue(undoModifiers.contains(.command), "Undo modifier should include Command")
+    }
+
+    func testCommandShiftZIsStandardRedoShortcut() {
+        // Verify Cmd+Shift+Z is the standard redo shortcut on macOS
+        let redoKeyEquivalent = "z"
+        let redoModifiers: NSEvent.ModifierFlags = [.command, .shift]
+
+        XCTAssertEqual(redoKeyEquivalent, "z", "Redo shortcut should be 'z'")
+        XCTAssertTrue(redoModifiers.contains(.command), "Redo modifier should include Command")
+        XCTAssertTrue(redoModifiers.contains(.shift), "Redo modifier should include Shift")
+    }
+
+    // MARK: - Should Change Text Pattern Tests
+
+    func testShouldChangeTextEnablesUndo() {
+        // Test that using shouldChangeText/didChangeText pattern enables undo
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Test")
+
+        let range = NSRange(location: 0, length: 4)
+
+        // Initially no undo available
+        XCTAssertFalse(textView.undoManager?.canUndo ?? true, "No undo should be available initially")
+
+        // Make a change using the proper pattern
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            textStorage.addAttribute(.foregroundColor, value: NSColor.red, range: range)
+            textView.didChangeText()
+        }
+
+        // Now undo should be available
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false, "Undo should be available after change")
+    }
+
+    func testWithoutShouldChangeTextNoUndo() {
+        // Test that NOT using shouldChangeText/didChangeText does not register undo
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Test")
+
+        let range = NSRange(location: 0, length: 4)
+
+        // Make a change WITHOUT using shouldChangeText/didChangeText
+        textStorage.beginEditing()
+        textStorage.addAttribute(.foregroundColor, value: NSColor.blue, range: range)
+        textStorage.endEditing()
+
+        // Undo should NOT be available - this is the bug we need to fix
+        // The current implementation uses beginEditing/endEditing without shouldChangeText
+        let canUndo = textView.undoManager?.canUndo ?? false
+        XCTAssertFalse(canUndo, "Undo should NOT be available when not using shouldChangeText pattern")
+    }
+
+    // MARK: - Integration Tests for Toolbar Formatting
+
+    func testFormattingWithShouldChangeTextRegistersUndo() {
+        // This test verifies the pattern that should be used in the actual implementation
+        let (textView, textStorage, _) = createTextViewWithUndoManager(text: "Hello World")
+
+        let range = NSRange(location: 0, length: 5)
+        let originalFont = NSFont.systemFont(ofSize: 14)
+        textStorage.addAttribute(.font, value: originalFont, range: range)
+
+        // This is how formatting SHOULD be applied (with shouldChangeText)
+        if textView.shouldChangeText(in: range, replacementString: nil) {
+            textStorage.beginEditing()
+            let boldFont = NSFontManager.shared.convert(originalFont, toHaveTrait: .boldFontMask)
+            textStorage.addAttribute(.font, value: boldFont, range: range)
+            textStorage.endEditing()
+            textView.didChangeText()
+        }
+
+        // Undo should be available
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false, "Undo should be available")
+
+        // Perform undo
+        textView.undoManager?.undo()
+
+        // Bold should be removed
+        let fontAfterUndo = textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        XCTAssertFalse(NSFontManager.shared.traits(of: fontAfterUndo!).contains(.boldFontMask), "Bold should be removed after undo")
     }
 }

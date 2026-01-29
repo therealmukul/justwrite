@@ -20,9 +20,20 @@ extension Color {
 struct FormattingToolbar: View {
     var body: some View {
         HStack(spacing: 2) {
-            // Bold & Italic only
+            // Bold & Italic
             FormatButton(label: "B", fontWeight: .bold, action: { applyFormat("bold") })
             FormatButton(label: "I", isItalic: true, action: { applyFormat("italic") })
+
+            // Divider
+            Rectangle()
+                .fill(Color.primary.opacity(0.2))
+                .frame(width: 1, height: 20)
+                .padding(.horizontal, 4)
+
+            // Alignment buttons
+            FormatButton(systemImage: "text.alignleft", action: { applyFormat("alignLeft") })
+            FormatButton(systemImage: "text.aligncenter", action: { applyFormat("alignCenter") })
+            FormatButton(systemImage: "text.alignright", action: { applyFormat("alignRight") })
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -45,7 +56,8 @@ struct FormattingToolbar: View {
 }
 
 struct FormatButton: View {
-    let label: String
+    var label: String? = nil
+    var systemImage: String? = nil
     var fontWeight: Font.Weight = .semibold
     var isItalic: Bool = false
     let action: () -> Void
@@ -53,11 +65,18 @@ struct FormatButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(label)
-                .font(.system(size: 13, weight: fontWeight))
-                .italic(isItalic)
-                .foregroundStyle(.primary)
-                .frame(width: 28, height: 28)
+            Group {
+                if let systemImage = systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 12, weight: .medium))
+                } else if let label = label {
+                    Text(label)
+                        .font(.system(size: 13, weight: fontWeight))
+                        .italic(isItalic)
+                }
+            }
+            .foregroundStyle(.primary)
+            .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
@@ -1230,6 +1249,9 @@ class SmoothCursorTextView: NSTextView {
         }
 
         // Has selection - toggle bold on selected text
+        // Use shouldChangeText/didChangeText pattern to enable undo support
+        guard shouldChangeText(in: range, replacementString: nil) else { return }
+
         let fontManager = NSFontManager.shared
         textStorage.beginEditing()
         textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
@@ -1244,6 +1266,9 @@ class SmoothCursorTextView: NSTextView {
             textStorage.addAttribute(.font, value: newFont, range: attrRange)
         }
         textStorage.endEditing()
+
+        // Complete the change to register with undo manager
+        didChangeText()
 
         // Notify that formatting changed so the binding can be updated
         NotificationCenter.default.post(name: .formattingDidChange, object: self)
@@ -1277,6 +1302,9 @@ class SmoothCursorTextView: NSTextView {
         }
 
         // Has selection - toggle italic on selected text
+        // Use shouldChangeText/didChangeText pattern to enable undo support
+        guard shouldChangeText(in: range, replacementString: nil) else { return }
+
         let fontManager = NSFontManager.shared
         textStorage.beginEditing()
         textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
@@ -1291,6 +1319,9 @@ class SmoothCursorTextView: NSTextView {
             textStorage.addAttribute(.font, value: newFont, range: attrRange)
         }
         textStorage.endEditing()
+
+        // Complete the change to register with undo manager
+        didChangeText()
 
         // Notify that formatting changed so the binding can be updated
         NotificationCenter.default.post(name: .formattingDidChange, object: self)
@@ -1787,38 +1818,72 @@ struct RichTextView: NSViewRepresentable {
                 let range = textView.selectedRange()
                 guard range.length > 0 else { return }
 
+                // Use shouldChangeText/didChangeText pattern to enable undo support
+                guard textView.shouldChangeText(in: range, replacementString: nil) else { return }
+
                 let fontManager = NSFontManager.shared
 
                 // Apply formatting to selected range
                 textStorage.beginEditing()
-                textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
-                    guard let currentFont = value as? NSFont else { return }
 
-                    let newFont: NSFont
-                    switch format {
-                    case "bold":
-                        // Toggle bold
-                        let traits = fontManager.traits(of: currentFont)
-                        if traits.contains(.boldFontMask) {
-                            newFont = fontManager.convert(currentFont, toNotHaveTrait: .boldFontMask)
+                switch format {
+                case "bold", "italic":
+                    // Handle font trait changes
+                    textStorage.enumerateAttribute(.font, in: range, options: []) { value, attrRange, _ in
+                        guard let currentFont = value as? NSFont else { return }
+
+                        let newFont: NSFont
+                        if format == "bold" {
+                            // Toggle bold
+                            let traits = fontManager.traits(of: currentFont)
+                            if traits.contains(.boldFontMask) {
+                                newFont = fontManager.convert(currentFont, toNotHaveTrait: .boldFontMask)
+                            } else {
+                                newFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
+                            }
                         } else {
-                            newFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
+                            // Toggle italic
+                            let traits = fontManager.traits(of: currentFont)
+                            if traits.contains(.italicFontMask) {
+                                newFont = fontManager.convert(currentFont, toNotHaveTrait: .italicFontMask)
+                            } else {
+                                newFont = fontManager.convert(currentFont, toHaveTrait: .italicFontMask)
+                            }
                         }
-                    case "italic":
-                        // Toggle italic
-                        let traits = fontManager.traits(of: currentFont)
-                        if traits.contains(.italicFontMask) {
-                            newFont = fontManager.convert(currentFont, toNotHaveTrait: .italicFontMask)
-                        } else {
-                            newFont = fontManager.convert(currentFont, toHaveTrait: .italicFontMask)
-                        }
-                    default:
-                        return
+
+                        textStorage.addAttribute(.font, value: newFont, range: attrRange)
                     }
 
-                    textStorage.addAttribute(.font, value: newFont, range: attrRange)
+                case "alignLeft", "alignCenter", "alignRight":
+                    // Handle paragraph alignment changes
+                    let alignment: NSTextAlignment
+                    switch format {
+                    case "alignLeft":
+                        alignment = .left
+                    case "alignCenter":
+                        alignment = .center
+                    case "alignRight":
+                        alignment = .right
+                    default:
+                        alignment = .left
+                    }
+
+                    // Get existing paragraph style or create new one, then modify alignment
+                    textStorage.enumerateAttribute(.paragraphStyle, in: range, options: []) { value, attrRange, _ in
+                        let existingStyle = value as? NSParagraphStyle ?? NSParagraphStyle.default
+                        let mutableStyle = existingStyle.mutableCopy() as! NSMutableParagraphStyle
+                        mutableStyle.alignment = alignment
+                        textStorage.addAttribute(.paragraphStyle, value: mutableStyle, range: attrRange)
+                    }
+
+                default:
+                    break
                 }
+
                 textStorage.endEditing()
+
+                // Complete the change to register with undo manager
+                textView.didChangeText()
 
                 // Notify that formatting changed so the binding can be updated
                 NotificationCenter.default.post(name: .formattingDidChange, object: textView)
