@@ -23,7 +23,12 @@ class TinyWriterDocument: NSDocument, ObservableObject {
             // Mark document as having unsaved changes when content or formatting changes
             // Compare both string content AND attributes for formatting changes
             if !oldValue.isEqual(to: newValue) {
+                let wasClean = !hasUnautosavedChanges
                 updateChangeCount(.changeDone)
+                // Notify when untitled document gets first content
+                if wasClean && fileURL == nil && newValue.length > 0 {
+                    NotificationCenter.default.post(name: .untitledDocumentBecameDirty, object: self)
+                }
             }
         }
     }

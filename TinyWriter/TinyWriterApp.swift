@@ -37,6 +37,8 @@ extension Notification.Name {
     static let hideFormattingToolbar = Notification.Name("hideFormattingToolbar")
     static let applyFormatting = Notification.Name("applyFormatting")
     static let moveCursorToEnd = Notification.Name("moveCursorToEnd")
+    static let untitledDocumentBecameDirty = Notification.Name("untitledDocumentBecameDirty")
+    static let formattingDidChange = Notification.Name("formattingDidChange")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {

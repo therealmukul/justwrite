@@ -390,6 +390,12 @@ struct NoteRow: View {
         .contextMenu {
             if let url = url {
                 Button {
+                    renameNote(url: url)
+                } label: {
+                    Label("Rename", systemImage: "pencil")
+                }
+
+                Button {
                     exportAsPDF(url: url)
                 } label: {
                     Label("Export as PDF", systemImage: "doc.richtext")
@@ -404,6 +410,88 @@ struct NoteRow: View {
                 }
             }
         }
+    }
+
+    private func renameNote(url: URL) {
+        let currentName = url.deletingPathExtension().lastPathComponent
+        let fileExtension = url.pathExtension
+
+        // Create input alert
+        let alert = NSAlert()
+        alert.messageText = "Rename Note"
+        alert.informativeText = "Enter a new name for \"\(currentName)\":"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        // Add text field for input
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        textField.stringValue = currentName
+        textField.placeholderString = "New name"
+        alert.accessoryView = textField
+
+        // Make text field first responder and select all text
+        alert.window.initialFirstResponder = textField
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            let newName = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Validate new name
+            if newName.isEmpty {
+                showRenameError(message: "Name cannot be empty")
+                return
+            }
+
+            if newName.contains(":") || newName.contains("/") {
+                showRenameError(message: "Name cannot contain ':' or '/'")
+                return
+            }
+
+            // Skip if name hasn't changed
+            if newName == currentName {
+                return
+            }
+
+            // Construct new URL
+            let newURL = url.deletingLastPathComponent()
+                .appendingPathComponent(newName)
+                .appendingPathExtension(fileExtension)
+
+            // Check if file already exists
+            if FileManager.default.fileExists(atPath: newURL.path) {
+                showRenameError(message: "A note named \"\(newName)\" already exists")
+                return
+            }
+
+            do {
+                // Check if this is the currently open document
+                let isCurrentDocument = NSDocumentController.shared.currentDocument?.fileURL == url
+
+                // Perform the rename
+                try FileManager.default.moveItem(at: url, to: newURL)
+
+                // If we renamed the current document, update it
+                if isCurrentDocument {
+                    // Open the renamed document
+                    if let documentManager = NSDocumentController.shared as? TinyWriterDocumentManager {
+                        documentManager.openTinyWriterDocument(at: newURL)
+                    }
+                }
+
+                // Post notification to refresh the notes list
+                NotificationCenter.default.post(name: .notesFolderChanged, object: nil)
+            } catch {
+                showRenameError(message: error.localizedDescription)
+            }
+        }
+    }
+
+    private func showRenameError(message: String) {
+        let errorAlert = NSAlert()
+        errorAlert.messageText = "Could not rename note"
+        errorAlert.informativeText = message
+        errorAlert.alertStyle = .critical
+        errorAlert.runModal()
     }
 
     private func deleteNote(url: URL) {
@@ -1157,6 +1245,9 @@ class SmoothCursorTextView: NSTextView {
         }
         textStorage.endEditing()
 
+        // Notify that formatting changed so the binding can be updated
+        NotificationCenter.default.post(name: .formattingDidChange, object: self)
+
         DispatchQueue.main.async { [weak self] in
             self?.updateCursorPosition(animated: true)
             self?.resetBlink()
@@ -1200,6 +1291,9 @@ class SmoothCursorTextView: NSTextView {
             textStorage.addAttribute(.font, value: newFont, range: attrRange)
         }
         textStorage.endEditing()
+
+        // Notify that formatting changed so the binding can be updated
+        NotificationCenter.default.post(name: .formattingDidChange, object: self)
 
         DispatchQueue.main.async { [weak self] in
             self?.updateCursorPosition(animated: true)
@@ -1587,27 +1681,56 @@ struct RichTextView: NSViewRepresentable {
             textView.selectedRanges = selectedRanges
         }
 
-        // Update font (size or family)
-        let newFont = getFont(size: CGFloat(fontSize))
+        // Update font (size or family) while preserving bold/italic traits
+        let newBaseFont = getFont(size: CGFloat(fontSize))
         let currentFontName = textView.font?.fontName ?? ""
-        let newFontName = newFont.fontName
+        let newFontName = newBaseFont.fontName
         if textView.font?.pointSize != CGFloat(fontSize) || currentFontName != newFontName {
-            textView.font = newFont
+            textView.font = newBaseFont
             textView.baseFontSize = CGFloat(fontSize)
-            // Update all existing text with new font
+            // Update all existing text with new font SIZE while preserving traits
             if let textStorage = textView.textStorage, textStorage.length > 0 {
-                textStorage.addAttribute(.font, value: newFont, range: NSRange(location: 0, length: textStorage.length))
+                let fontManager = NSFontManager.shared
+                textStorage.beginEditing()
+                textStorage.enumerateAttribute(.font, in: NSRange(location: 0, length: textStorage.length), options: []) { value, range, _ in
+                    let traits: NSFontTraitMask
+                    if let oldFont = value as? NSFont {
+                        traits = fontManager.traits(of: oldFont)
+                    } else {
+                        traits = []
+                    }
+                    // Start with the new base font and apply preserved traits
+                    var updatedFont = newBaseFont
+                    if traits.contains(.boldFontMask) {
+                        updatedFont = fontManager.convert(updatedFont, toHaveTrait: .boldFontMask)
+                    }
+                    if traits.contains(.italicFontMask) {
+                        updatedFont = fontManager.convert(updatedFont, toHaveTrait: .italicFontMask)
+                    }
+                    textStorage.addAttribute(.font, value: updatedFont, range: range)
+                }
+                textStorage.endEditing()
             }
         }
 
-        // Update line spacing
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = CGFloat(lineSpacing)
-        if textView.defaultParagraphStyle?.lineSpacing != CGFloat(lineSpacing) {
-            textView.defaultParagraphStyle = paragraphStyle
-            // Update all existing text with new line spacing
+        // Update line spacing while preserving other paragraph attributes
+        let newLineSpacing = CGFloat(lineSpacing)
+        if textView.defaultParagraphStyle?.lineSpacing != newLineSpacing {
+            let defaultParagraphStyle = NSMutableParagraphStyle()
+            defaultParagraphStyle.lineSpacing = newLineSpacing
+            textView.defaultParagraphStyle = defaultParagraphStyle
+            // Update all existing text with new line spacing, preserving other paragraph attributes
             if let textStorage = textView.textStorage, textStorage.length > 0 {
-                textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: textStorage.length))
+                textStorage.beginEditing()
+                textStorage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: textStorage.length), options: []) { value, range, _ in
+                    let newStyle = NSMutableParagraphStyle()
+                    if let oldStyle = value as? NSParagraphStyle {
+                        newStyle.setParagraphStyle(oldStyle)
+                    }
+                    newStyle.lineSpacing = newLineSpacing
+                    textStorage.addAttribute(.paragraphStyle, value: newStyle, range: range)
+                }
+                textStorage.endEditing()
             }
         }
 
@@ -1641,6 +1764,7 @@ struct RichTextView: NSViewRepresentable {
         var verticalPadding: CGFloat = 40
         var minimumHorizontalPadding: CGFloat = 40
         private var formattingObserver: Any?
+        private var formattingChangeObserver: Any?
 
         var optimalTextWidth: CGFloat {
             parent.optimalTextWidth
@@ -1695,11 +1819,32 @@ struct RichTextView: NSViewRepresentable {
                     textStorage.addAttribute(.font, value: newFont, range: attrRange)
                 }
                 textStorage.endEditing()
+
+                // Notify that formatting changed so the binding can be updated
+                NotificationCenter.default.post(name: .formattingDidChange, object: textView)
+            }
+
+            // Listen for formatting changes to update the binding
+            formattingChangeObserver = NotificationCenter.default.addObserver(
+                forName: .formattingDidChange,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self = self,
+                      let textView = notification.object as? NSTextView,
+                      textView === self.textView,
+                      let textStorage = textView.textStorage else { return }
+
+                // Update the binding with the current attributed text (including formatting)
+                self.parent.attributedText = NSAttributedString(attributedString: textStorage)
             }
         }
 
         deinit {
             if let observer = formattingObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            if let observer = formattingChangeObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
         }

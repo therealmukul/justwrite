@@ -38,16 +38,46 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
     /// Cache of open documents by URL
     private var openDocuments: [URL: TinyWriterDocument] = [:]
 
+    /// Tracks untitled documents that haven't been saved to disk yet
+    private var untitledDocuments: Set<TinyWriterDocument> = []
+
+    /// Observer for untitled document first edit notification
+    private var untitledDocumentObserver: Any?
+
     // MARK: - Initialization
 
     override init() {
         super.init()
         loadNotesFolder()
+        setupUntitledDocumentObserver()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         loadNotesFolder()
+        setupUntitledDocumentObserver()
+    }
+
+    deinit {
+        if let observer = untitledDocumentObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Sets up observer for when untitled documents get their first content
+    private func setupUntitledDocumentObserver() {
+        untitledDocumentObserver = NotificationCenter.default.addObserver(
+            forName: .untitledDocumentBecameDirty,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let document = notification.object as? TinyWriterDocument,
+                  self.untitledDocuments.contains(document),
+                  let folder = self.notesFolder else { return }
+
+            self.assignURLAndSave(document: document, in: folder)
+        }
     }
 
     // MARK: - Notes Folder Management
@@ -114,53 +144,79 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
     // MARK: - Document Creation
 
     /// Creates a new document in the notes folder.
+    /// The document starts as an in-memory untitled document.
+    /// A file is only created on disk when the user types something.
     func createNewTinyWriterDocument(completion: ((TinyWriterDocument?) -> Void)? = nil) {
-        // Save current document first
-        saveCurrentDocumentIfNeeded()
+        // Check if current document is untitled and empty - discard it
+        if let current = activeDocument,
+           current.fileURL == nil,
+           current.attributedText.length == 0 {
+            // Remove empty untitled document
+            untitledDocuments.remove(current)
+            removeDocument(current)
+        } else {
+            // Save current document first (only if it has content)
+            saveCurrentDocumentIfNeeded()
+        }
 
-        guard let folder = notesFolder else {
-            // No notes folder - create untitled document
+        guard notesFolder != nil else {
+            // No notes folder - create untitled document (existing behavior)
             createUntitledTinyWriterDocument(completion: completion)
             return
         }
 
-        // Generate unique filename
-        let filename = generateUniqueFilename(in: folder)
-        let fileURL = folder.appendingPathComponent(filename)
-
-        // Create new document
+        // Create in-memory document without file (deferred file creation)
         let newDocument = TinyWriterDocument()
         addDocument(newDocument)
 
-        // Save to the new location
-        newDocument.save(to: fileURL, ofType: UTType.rtf.identifier, for: .saveAsOperation) { [weak self] error in
-            guard let self = self else { return }
+        // Track as untitled document
+        untitledDocuments.insert(newDocument)
 
-            if let error = error {
-                print("Error saving new document: \(error)")
-                DispatchQueue.main.async {
-                    completion?(nil)
-                }
-                return
-            }
-
-            DispatchQueue.main.async {
-                self.openDocuments[fileURL] = newDocument
-                self.switchToDocument(newDocument)
-                completion?(newDocument)
-
-                // Notify that a new document was created
-                NotificationCenter.default.post(name: .notesFolderChanged, object: nil)
-            }
-        }
+        switchToDocument(newDocument)
+        completion?(newDocument)
     }
 
     /// Creates an untitled document (when no notes folder is set).
     private func createUntitledTinyWriterDocument(completion: ((TinyWriterDocument?) -> Void)? = nil) {
         let newDocument = TinyWriterDocument()
         addDocument(newDocument)
+        untitledDocuments.insert(newDocument)
         switchToDocument(newDocument)
         completion?(newDocument)
+    }
+
+    /// Assigns a URL to an untitled document and saves it to disk.
+    /// Called when user types in an untitled document for the first time.
+    private func assignURLAndSave(document: TinyWriterDocument, in folder: URL) {
+        // Generate unique filename
+        let filename = generateUniqueFilename(in: folder)
+        let fileURL = folder.appendingPathComponent(filename)
+
+        // Move from untitled set to URL cache
+        untitledDocuments.remove(document)
+        openDocuments[fileURL] = document
+
+        // Save to the new location
+        document.save(to: fileURL, ofType: UTType.rtf.identifier, for: .saveAsOperation) { [weak self] error in
+            guard let self = self else { return }
+
+            if let error = error {
+                print("Error saving new document: \(error)")
+                return
+            }
+
+            DispatchQueue.main.async {
+                // Update window title
+                NSApp.keyWindow?.title = fileURL.deletingPathExtension().lastPathComponent
+                self.lastEditedURL = fileURL
+
+                // Notify that the current document now has a URL (for sidebar selection)
+                NotificationCenter.default.post(name: .currentDocumentChanged, object: fileURL)
+
+                // Notify that a new document was created (for sidebar refresh)
+                NotificationCenter.default.post(name: .notesFolderChanged, object: nil)
+            }
+        }
     }
 
     // MARK: - Document Switching
@@ -189,6 +245,18 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
     /// This is non-blocking - NSDocument's autosave mechanism handles persistence.
     func saveCurrentDocumentIfNeeded() {
         guard let current = activeDocument else { return }
+
+        // Skip untitled documents with no content
+        if current.fileURL == nil && current.attributedText.length == 0 {
+            return
+        }
+
+        // For untitled documents WITH content, trigger first save
+        if current.fileURL == nil, current.attributedText.length > 0, let folder = notesFolder {
+            assignURLAndSave(document: current, in: folder)
+            return
+        }
+
         guard current.hasUnautosavedChanges else { return }
 
         // Trigger autosave - this is non-blocking and handled by NSDocument
@@ -202,6 +270,7 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
     /// Triggers saves for all open documents with unsaved changes.
     /// Non-blocking - relies on NSDocument's autosave mechanism.
     func saveAllDocuments() {
+        // Save documents that have URLs
         for document in openDocuments.values {
             guard document.hasUnautosavedChanges else { continue }
 
@@ -209,6 +278,14 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
                 if let error = error {
                     print("Autosave error: \(error.localizedDescription)")
                 }
+            }
+        }
+
+        // Save untitled documents that have content
+        guard let folder = notesFolder else { return }
+        for document in untitledDocuments {
+            if document.attributedText.length > 0 {
+                assignURLAndSave(document: document, in: folder)
             }
         }
     }

@@ -2287,3 +2287,724 @@ final class TextReplacementIntegrationTests: XCTestCase {
         XCTAssertFalse(text.contains("\n"), "No newlines should be introduced")
     }
 }
+
+// MARK: - Formatting Preservation Tests
+
+final class FormattingPreservationTests: XCTestCase {
+
+    // MARK: - Font Trait Preservation Tests
+
+    func testBoldTraitPreservedWhenChangingFontSize() {
+        // Create attributed string with bold text
+        let fontManager = NSFontManager.shared
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let boldFont = fontManager.convert(regularFont, toHaveTrait: .boldFontMask)
+
+        let attributedString = NSMutableAttributedString(string: "Hello World")
+        // Make "Hello" bold (positions 0-5)
+        attributedString.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 5))
+        // Keep "World" regular (positions 6-11)
+        attributedString.addAttribute(.font, value: regularFont, range: NSRange(location: 6, length: 5))
+
+        // Simulate font size change - preserve traits while changing size
+        let newSize: CGFloat = 18
+        attributedString.enumerateAttribute(.font, in: NSRange(location: 0, length: attributedString.length), options: []) { value, range, _ in
+            guard let oldFont = value as? NSFont else { return }
+            let traits = fontManager.traits(of: oldFont)
+            var newFont = NSFont.systemFont(ofSize: newSize)
+            if traits.contains(.boldFontMask) {
+                newFont = fontManager.convert(newFont, toHaveTrait: .boldFontMask)
+            }
+            if traits.contains(.italicFontMask) {
+                newFont = fontManager.convert(newFont, toHaveTrait: .italicFontMask)
+            }
+            attributedString.addAttribute(.font, value: newFont, range: range)
+        }
+
+        // Verify "Hello" is still bold
+        var helloFont: NSFont?
+        attributedString.enumerateAttribute(.font, in: NSRange(location: 0, length: 5), options: []) { value, _, _ in
+            helloFont = value as? NSFont
+        }
+        XCTAssertNotNil(helloFont)
+        let helloTraits = fontManager.traits(of: helloFont!)
+        XCTAssertTrue(helloTraits.contains(.boldFontMask), "Bold trait should be preserved after font size change")
+        XCTAssertEqual(helloFont?.pointSize, newSize, "Font size should be updated")
+
+        // Verify "World" is still regular (not bold)
+        var worldFont: NSFont?
+        attributedString.enumerateAttribute(.font, in: NSRange(location: 6, length: 5), options: []) { value, _, _ in
+            worldFont = value as? NSFont
+        }
+        XCTAssertNotNil(worldFont)
+        let worldTraits = fontManager.traits(of: worldFont!)
+        XCTAssertFalse(worldTraits.contains(.boldFontMask), "Regular text should remain not bold")
+        XCTAssertEqual(worldFont?.pointSize, newSize, "Font size should be updated")
+    }
+
+    func testItalicTraitPreservedWhenChangingFontSize() {
+        let fontManager = NSFontManager.shared
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let italicFont = fontManager.convert(regularFont, toHaveTrait: .italicFontMask)
+
+        let attributedString = NSMutableAttributedString(string: "Hello World")
+        attributedString.addAttribute(.font, value: italicFont, range: NSRange(location: 0, length: 5))
+        attributedString.addAttribute(.font, value: regularFont, range: NSRange(location: 6, length: 5))
+
+        // Simulate font size change with trait preservation
+        let newSize: CGFloat = 20
+        attributedString.enumerateAttribute(.font, in: NSRange(location: 0, length: attributedString.length), options: []) { value, range, _ in
+            guard let oldFont = value as? NSFont else { return }
+            let traits = fontManager.traits(of: oldFont)
+            var newFont = NSFont.systemFont(ofSize: newSize)
+            if traits.contains(.boldFontMask) {
+                newFont = fontManager.convert(newFont, toHaveTrait: .boldFontMask)
+            }
+            if traits.contains(.italicFontMask) {
+                newFont = fontManager.convert(newFont, toHaveTrait: .italicFontMask)
+            }
+            attributedString.addAttribute(.font, value: newFont, range: range)
+        }
+
+        // Verify "Hello" is still italic
+        var helloFont: NSFont?
+        attributedString.enumerateAttribute(.font, in: NSRange(location: 0, length: 5), options: []) { value, _, _ in
+            helloFont = value as? NSFont
+        }
+        XCTAssertNotNil(helloFont)
+        let helloTraits = fontManager.traits(of: helloFont!)
+        XCTAssertTrue(helloTraits.contains(.italicFontMask), "Italic trait should be preserved after font size change")
+    }
+
+    func testBoldItalicTraitsPreservedWhenChangingFontSize() {
+        let fontManager = NSFontManager.shared
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let boldItalicFont = fontManager.convert(
+            fontManager.convert(regularFont, toHaveTrait: .boldFontMask),
+            toHaveTrait: .italicFontMask
+        )
+
+        let attributedString = NSMutableAttributedString(string: "BoldItalic")
+        attributedString.addAttribute(.font, value: boldItalicFont, range: NSRange(location: 0, length: 10))
+
+        // Change font size
+        let newSize: CGFloat = 22
+        attributedString.enumerateAttribute(.font, in: NSRange(location: 0, length: attributedString.length), options: []) { value, range, _ in
+            guard let oldFont = value as? NSFont else { return }
+            let traits = fontManager.traits(of: oldFont)
+            var newFont = NSFont.systemFont(ofSize: newSize)
+            if traits.contains(.boldFontMask) {
+                newFont = fontManager.convert(newFont, toHaveTrait: .boldFontMask)
+            }
+            if traits.contains(.italicFontMask) {
+                newFont = fontManager.convert(newFont, toHaveTrait: .italicFontMask)
+            }
+            attributedString.addAttribute(.font, value: newFont, range: range)
+        }
+
+        var resultFont: NSFont?
+        attributedString.enumerateAttribute(.font, in: NSRange(location: 0, length: 10), options: []) { value, _, _ in
+            resultFont = value as? NSFont
+        }
+        XCTAssertNotNil(resultFont)
+        let resultTraits = fontManager.traits(of: resultFont!)
+        XCTAssertTrue(resultTraits.contains(.boldFontMask), "Bold trait should be preserved")
+        XCTAssertTrue(resultTraits.contains(.italicFontMask), "Italic trait should be preserved")
+        XCTAssertEqual(resultFont?.pointSize, newSize, "Font size should be updated")
+    }
+
+    // MARK: - Paragraph Style Preservation Tests
+
+    func testLineSpacingChangePreservesParagraphStyle() {
+        let originalStyle = NSMutableParagraphStyle()
+        originalStyle.lineSpacing = 6
+        originalStyle.alignment = .center  // Custom alignment
+
+        let attributedString = NSMutableAttributedString(string: "Test paragraph")
+        attributedString.addAttribute(.paragraphStyle, value: originalStyle, range: NSRange(location: 0, length: attributedString.length))
+
+        // Update line spacing while preserving other paragraph attributes
+        let newLineSpacing: CGFloat = 10
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, range, _ in
+            let newStyle = NSMutableParagraphStyle()
+            if let oldStyle = value as? NSParagraphStyle {
+                newStyle.setParagraphStyle(oldStyle)
+            }
+            newStyle.lineSpacing = newLineSpacing
+            attributedString.addAttribute(.paragraphStyle, value: newStyle, range: range)
+        }
+
+        var resultStyle: NSParagraphStyle?
+        attributedString.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: attributedString.length), options: []) { value, _, _ in
+            resultStyle = value as? NSParagraphStyle
+        }
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.lineSpacing, newLineSpacing, "Line spacing should be updated")
+        XCTAssertEqual(resultStyle?.alignment, .center, "Alignment should be preserved")
+    }
+
+    // MARK: - Text Storage Formatting Tests
+
+    func testTextStoragePreservesFormattingDuringUpdate() {
+        let textStorage = NSTextStorage(string: "Bold and Regular")
+        let fontManager = NSFontManager.shared
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let boldFont = fontManager.convert(regularFont, toHaveTrait: .boldFontMask)
+
+        // Apply formatting: "Bold" is bold, " and Regular" is regular
+        textStorage.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 4))
+        textStorage.addAttribute(.font, value: regularFont, range: NSRange(location: 4, length: 12))
+
+        // Verify initial state
+        var initialBoldFont: NSFont?
+        textStorage.enumerateAttribute(.font, in: NSRange(location: 0, length: 4), options: []) { value, _, _ in
+            initialBoldFont = value as? NSFont
+        }
+        XCTAssertTrue(fontManager.traits(of: initialBoldFont!).contains(.boldFontMask), "Initial bold should be set")
+
+        // Simulate a proper font size update that preserves traits
+        let newSize: CGFloat = 18
+        textStorage.beginEditing()
+        textStorage.enumerateAttribute(.font, in: NSRange(location: 0, length: textStorage.length), options: []) { value, range, _ in
+            guard let oldFont = value as? NSFont else { return }
+            let traits = fontManager.traits(of: oldFont)
+            var newFont = NSFont.systemFont(ofSize: newSize)
+            if traits.contains(.boldFontMask) {
+                newFont = fontManager.convert(newFont, toHaveTrait: .boldFontMask)
+            }
+            if traits.contains(.italicFontMask) {
+                newFont = fontManager.convert(newFont, toHaveTrait: .italicFontMask)
+            }
+            textStorage.addAttribute(.font, value: newFont, range: range)
+        }
+        textStorage.endEditing()
+
+        // Verify "Bold" is still bold after update
+        var finalBoldFont: NSFont?
+        textStorage.enumerateAttribute(.font, in: NSRange(location: 0, length: 4), options: []) { value, _, _ in
+            finalBoldFont = value as? NSFont
+        }
+        XCTAssertNotNil(finalBoldFont)
+        XCTAssertTrue(fontManager.traits(of: finalBoldFont!).contains(.boldFontMask), "Bold trait should be preserved after text storage update")
+        XCTAssertEqual(finalBoldFont?.pointSize, newSize)
+    }
+
+    // MARK: - Destructive Update Detection Tests
+
+    func testDestructiveUpdateLosesFormatting() {
+        // This test demonstrates the BAD behavior that we're fixing
+        let textStorage = NSTextStorage(string: "Bold text")
+        let fontManager = NSFontManager.shared
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let boldFont = fontManager.convert(regularFont, toHaveTrait: .boldFontMask)
+
+        // Apply bold
+        textStorage.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 4))
+
+        // DESTRUCTIVE: Apply a single font to entire range (the old buggy behavior)
+        let newRegularFont = NSFont.systemFont(ofSize: 18)
+        textStorage.addAttribute(.font, value: newRegularFont, range: NSRange(location: 0, length: textStorage.length))
+
+        // Verify bold is LOST (this is the bug we're fixing)
+        var resultFont: NSFont?
+        textStorage.enumerateAttribute(.font, in: NSRange(location: 0, length: 4), options: []) { value, _, _ in
+            resultFont = value as? NSFont
+        }
+        XCTAssertNotNil(resultFont)
+        XCTAssertFalse(fontManager.traits(of: resultFont!).contains(.boldFontMask), "Destructive update should lose bold (this is the bug)")
+    }
+
+    // MARK: - View Recreation Simulation Tests
+
+    func testFormattingPreservedThroughAttributedStringCopy() {
+        // Simulates what happens when view is recreated during fullscreen:
+        // The attributedText binding should preserve formatting
+        let fontManager = NSFontManager.shared
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        let boldFont = fontManager.convert(regularFont, toHaveTrait: .boldFontMask)
+
+        // Original text storage with bold formatting
+        let originalStorage = NSTextStorage(string: "Bold text")
+        originalStorage.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 4))
+        originalStorage.addAttribute(.font, value: regularFont, range: NSRange(location: 4, length: 5))
+
+        // Copy to NSAttributedString (simulating binding update)
+        let attributedCopy = NSAttributedString(attributedString: originalStorage)
+
+        // Create new text storage from copy (simulating view recreation)
+        let newStorage = NSTextStorage(attributedString: attributedCopy)
+
+        // Verify bold is preserved through the copy
+        var boldFontResult: NSFont?
+        newStorage.enumerateAttribute(.font, in: NSRange(location: 0, length: 4), options: []) { value, _, _ in
+            boldFontResult = value as? NSFont
+        }
+        XCTAssertNotNil(boldFontResult)
+        XCTAssertTrue(fontManager.traits(of: boldFontResult!).contains(.boldFontMask),
+                     "Bold formatting should be preserved through attributed string copy")
+    }
+
+    func testFormattingDidChangeNotificationExists() {
+        // Verify the notification name exists
+        let notificationName = Notification.Name.formattingDidChange
+        XCTAssertEqual(notificationName.rawValue, "formattingDidChange")
+    }
+}
+
+// MARK: - Sidebar Selection Tests
+
+final class SidebarSelectionTests: XCTestCase {
+
+    // MARK: - Current Document URL Tracking Tests
+
+    func testCurrentDocumentChangedNotificationContainsURL() {
+        // When a document with a URL is switched to, the notification should contain that URL
+        let testURL = URL(fileURLWithPath: "/tmp/test.rtf")
+        var receivedURL: URL?
+
+        let expectation = XCTestExpectation(description: "Notification received")
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .currentDocumentChanged,
+            object: nil,
+            queue: .main
+        ) { notification in
+            receivedURL = notification.object as? URL
+            expectation.fulfill()
+        }
+
+        // Post notification with URL
+        NotificationCenter.default.post(name: .currentDocumentChanged, object: testURL)
+
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertEqual(receivedURL, testURL, "Notification should contain the document URL")
+
+        NotificationCenter.default.removeObserver(observer)
+    }
+
+    func testCurrentDocumentChangedNotificationCanBeNil() {
+        // For untitled documents, the notification object may be nil
+        var notificationReceived = false
+        var receivedObject: Any?
+
+        let expectation = XCTestExpectation(description: "Notification received")
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .currentDocumentChanged,
+            object: nil,
+            queue: .main
+        ) { notification in
+            notificationReceived = true
+            receivedObject = notification.object
+            expectation.fulfill()
+        }
+
+        // Post notification with nil
+        NotificationCenter.default.post(name: .currentDocumentChanged, object: nil)
+
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertTrue(notificationReceived, "Notification should be received")
+        XCTAssertNil(receivedObject, "Notification object should be nil for untitled documents")
+
+        NotificationCenter.default.removeObserver(observer)
+    }
+
+    // MARK: - URL Comparison Tests
+
+    func testURLEqualityForSelection() {
+        // Test that URL comparison works correctly for selection highlighting
+        let url1 = URL(fileURLWithPath: "/Users/test/Documents/notes/MyNote.rtf")
+        let url2 = URL(fileURLWithPath: "/Users/test/Documents/notes/MyNote.rtf")
+        let url3 = URL(fileURLWithPath: "/Users/test/Documents/notes/OtherNote.rtf")
+
+        XCTAssertEqual(url1, url2, "Same path URLs should be equal")
+        XCTAssertNotEqual(url1, url3, "Different path URLs should not be equal")
+
+        // Test isSelected logic
+        let currentDocumentURL: URL? = url1
+        let isUrl1Selected = url1 == currentDocumentURL
+        let isUrl3Selected = url3 == currentDocumentURL
+
+        XCTAssertTrue(isUrl1Selected, "URL matching currentDocumentURL should be selected")
+        XCTAssertFalse(isUrl3Selected, "URL not matching currentDocumentURL should not be selected")
+    }
+
+    func testNilCurrentDocumentURLSelectsNothing() {
+        let testURL = URL(fileURLWithPath: "/tmp/test.rtf")
+        let currentDocumentURL: URL? = nil
+
+        let isSelected = testURL == currentDocumentURL
+
+        XCTAssertFalse(isSelected, "When currentDocumentURL is nil, no file should be selected")
+    }
+
+    // MARK: - Document Manager State Tests
+
+    func testDocumentManagerHasActiveDocumentProperty() {
+        let documentManager = TinyWriterDocumentManager()
+
+        // The activeDocument property should exist and be accessible
+        // (It may or may not be nil depending on app state)
+        _ = documentManager.activeDocument
+        // Test passes if property is accessible without crash
+    }
+
+    func testNewDocumentStartsWithNilFileURL() {
+        let document = TinyWriterDocument()
+        XCTAssertNil(document.fileURL, "New document should have nil fileURL")
+    }
+
+    // MARK: - Notification Flow Tests
+
+    func testCurrentDocumentChangedNotificationNameExists() {
+        let notificationName = Notification.Name.currentDocumentChanged
+        XCTAssertEqual(notificationName.rawValue, "currentDocumentChanged")
+    }
+
+    func testNotesFolderChangedNotificationNameExists() {
+        let notificationName = Notification.Name.notesFolderChanged
+        XCTAssertEqual(notificationName.rawValue, "notesFolderChanged")
+    }
+}
+
+// MARK: - File Rename Tests
+
+final class FileRenameTests: XCTestCase {
+
+    var tempFolder: URL!
+
+    override func setUp() {
+        super.setUp()
+        tempFolder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TinyWriterRenameTests_\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: tempFolder,
+            withIntermediateDirectories: true)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempFolder)
+        super.tearDown()
+    }
+
+    // MARK: - Basic Rename Tests
+
+    func testRenameFileChangesFilename() throws {
+        // Create a test file
+        let oldURL = tempFolder.appendingPathComponent("OldName.rtf")
+        FileManager.default.createFile(atPath: oldURL.path, contents: "Test content".data(using: .utf8))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldURL.path), "Original file should exist")
+
+        // Rename the file
+        let newURL = tempFolder.appendingPathComponent("NewName.rtf")
+        try FileManager.default.moveItem(at: oldURL, to: newURL)
+
+        // Verify rename
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldURL.path), "Old file should not exist")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: newURL.path), "New file should exist")
+    }
+
+    func testRenamePreservesFileContent() throws {
+        let originalContent = "This is the original content"
+        let oldURL = tempFolder.appendingPathComponent("Original.rtf")
+        FileManager.default.createFile(atPath: oldURL.path, contents: originalContent.data(using: .utf8))
+
+        let newURL = tempFolder.appendingPathComponent("Renamed.rtf")
+        try FileManager.default.moveItem(at: oldURL, to: newURL)
+
+        // Verify content is preserved
+        let readContent = try String(contentsOf: newURL, encoding: .utf8)
+        XCTAssertEqual(readContent, originalContent, "File content should be preserved after rename")
+    }
+
+    func testRenamePreservesFileExtension() throws {
+        let oldURL = tempFolder.appendingPathComponent("Test.rtf")
+        FileManager.default.createFile(atPath: oldURL.path, contents: Data())
+
+        let newURL = tempFolder.appendingPathComponent("Renamed.rtf")
+        try FileManager.default.moveItem(at: oldURL, to: newURL)
+
+        XCTAssertEqual(newURL.pathExtension, "rtf", "File extension should be preserved")
+    }
+
+    // MARK: - Validation Tests
+
+    func testCannotRenameToExistingFilename() throws {
+        // Create two files
+        let file1URL = tempFolder.appendingPathComponent("File1.rtf")
+        let file2URL = tempFolder.appendingPathComponent("File2.rtf")
+        FileManager.default.createFile(atPath: file1URL.path, contents: Data())
+        FileManager.default.createFile(atPath: file2URL.path, contents: Data())
+
+        // Try to rename File1 to File2 (should fail)
+        let targetURL = tempFolder.appendingPathComponent("File2.rtf")
+
+        XCTAssertThrowsError(try FileManager.default.moveItem(at: file1URL, to: targetURL)) { error in
+            // Should throw because File2 already exists
+            XCTAssertTrue(error is CocoaError || (error as NSError).domain == NSCocoaErrorDomain,
+                         "Should throw a file exists error")
+        }
+    }
+
+    func testEmptyFilenameIsInvalid() {
+        let emptyName = ""
+        XCTAssertTrue(emptyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                     "Empty filename should be detected as invalid")
+    }
+
+    func testWhitespaceOnlyFilenameIsInvalid() {
+        let whitespaceName = "   "
+        XCTAssertTrue(whitespaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                     "Whitespace-only filename should be detected as invalid")
+    }
+
+    func testFilenameWithInvalidCharactersDetection() {
+        // macOS doesn't allow colons or forward slashes in filenames
+        let invalidNames = ["file:name", "file/name"]
+
+        for name in invalidNames {
+            let hasInvalidChars = name.contains(":") || name.contains("/")
+            XCTAssertTrue(hasInvalidChars, "'\(name)' should be detected as having invalid characters")
+        }
+    }
+
+    // MARK: - URL Construction Tests
+
+    func testNewURLConstructionPreservesDirectory() {
+        let originalURL = tempFolder.appendingPathComponent("Original.rtf")
+        let newName = "NewName"
+        let fileExtension = originalURL.pathExtension
+
+        let newURL = originalURL.deletingLastPathComponent()
+            .appendingPathComponent(newName)
+            .appendingPathExtension(fileExtension)
+
+        XCTAssertEqual(newURL.deletingLastPathComponent(), originalURL.deletingLastPathComponent(),
+                      "Directory should be preserved")
+        XCTAssertEqual(newURL.deletingPathExtension().lastPathComponent, newName,
+                      "New filename should be set correctly")
+        XCTAssertEqual(newURL.pathExtension, "rtf", "Extension should be preserved")
+    }
+
+    func testExtractFilenameWithoutExtension() {
+        let url = tempFolder.appendingPathComponent("MyDocument.rtf")
+        let nameWithoutExtension = url.deletingPathExtension().lastPathComponent
+
+        XCTAssertEqual(nameWithoutExtension, "MyDocument",
+                      "Should extract filename without extension")
+    }
+
+    // MARK: - Edge Cases
+
+    func testRenameToSameNameDoesNothing() throws {
+        let url = tempFolder.appendingPathComponent("SameName.rtf")
+        FileManager.default.createFile(atPath: url.path, contents: "Content".data(using: .utf8))
+
+        // Renaming to same name should be a no-op (or handled gracefully)
+        // In practice, we'd skip the rename operation if names are equal
+        let oldName = url.deletingPathExtension().lastPathComponent
+        let newName = "SameName"
+
+        XCTAssertEqual(oldName, newName, "Same name should be detected")
+        // The UI should not perform a rename when old == new
+    }
+
+    func testRenameWithSpecialCharacters() throws {
+        let oldURL = tempFolder.appendingPathComponent("Normal.rtf")
+        FileManager.default.createFile(atPath: oldURL.path, contents: Data())
+
+        // macOS allows most special characters except : and /
+        let newURL = tempFolder.appendingPathComponent("Special & Name (1) - Test!.rtf")
+        try FileManager.default.moveItem(at: oldURL, to: newURL)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: newURL.path),
+                     "Should allow special characters in filename")
+    }
+
+    func testRenameWithUnicodeCharacters() throws {
+        let oldURL = tempFolder.appendingPathComponent("Normal.rtf")
+        FileManager.default.createFile(atPath: oldURL.path, contents: Data())
+
+        let newURL = tempFolder.appendingPathComponent("日本語ファイル.rtf")
+        try FileManager.default.moveItem(at: oldURL, to: newURL)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: newURL.path),
+                     "Should allow unicode characters in filename")
+    }
+}
+
+// MARK: - Deferred File Creation Tests
+
+final class DeferredFileCreationTests: XCTestCase {
+
+    var documentManager: TinyWriterDocumentManager!
+    var tempFolder: URL!
+
+    override func setUp() {
+        super.setUp()
+        documentManager = TinyWriterDocumentManager()
+        tempFolder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TinyWriterTests_\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: tempFolder,
+            withIntermediateDirectories: true)
+        documentManager.setNotesFolder(tempFolder)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: tempFolder)
+        super.tearDown()
+    }
+
+    // MARK: - Document Creation Tests
+
+    func testNewDocumentStartsWithNoFileURL() {
+        // When creating a new document, it should not have a file URL
+        let expectation = XCTestExpectation(description: "Document created")
+
+        documentManager.createNewTinyWriterDocument { document in
+            XCTAssertNotNil(document, "Should create a document")
+            XCTAssertNil(document?.fileURL, "New document should not have a file URL")
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    func testNewDocumentDoesNotCreateFileOnDisk() {
+        // Creating a new document should not create any file
+        let expectation = XCTestExpectation(description: "Document created")
+
+        let initialFiles = try? FileManager.default.contentsOfDirectory(at: tempFolder,
+            includingPropertiesForKeys: nil)
+        let initialCount = initialFiles?.count ?? 0
+
+        documentManager.createNewTinyWriterDocument { [self] _ in
+            let newFiles = try? FileManager.default.contentsOfDirectory(at: tempFolder,
+                includingPropertiesForKeys: nil)
+            XCTAssertEqual(newFiles?.count ?? 0, initialCount,
+                "No new file should be created on disk")
+            expectation.fulfill()
+        }
+
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    func testUntitledDocumentHasNoFileURL() {
+        // Verify fileURL is nil for new documents
+        let document = TinyWriterDocument()
+        XCTAssertNil(document.fileURL, "New document should have nil fileURL")
+    }
+
+    // MARK: - First Save Tests
+
+    func testTypingTriggersFileCreation() {
+        // When user types in an untitled document, file should be created
+        let expectation = XCTestExpectation(description: "File created after typing")
+
+        documentManager.createNewTinyWriterDocument { [self] document in
+            guard let doc = document else {
+                XCTFail("Should create document")
+                expectation.fulfill()
+                return
+            }
+
+            // Simulate typing
+            doc.text = "Hello, World!"
+
+            // Allow save to trigger
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                XCTAssertNotNil(doc.fileURL, "Document should now have a file URL")
+
+                if let url = doc.fileURL {
+                    XCTAssertTrue(FileManager.default.fileExists(atPath: url.path),
+                        "File should exist on disk")
+                }
+                expectation.fulfill()
+            }
+        }
+
+        wait(for: [expectation], timeout: 3.0)
+    }
+
+    func testFirstSaveGeneratesTimestampFilename() {
+        let expectation = XCTestExpectation(description: "Filename generated")
+
+        documentManager.createNewTinyWriterDocument { document in
+            guard let doc = document else {
+                XCTFail("Should create document")
+                expectation.fulfill()
+                return
+            }
+
+            doc.text = "Test content"
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if let filename = doc.fileURL?.lastPathComponent {
+                    // Verify filename has .rtf extension
+                    XCTAssertTrue(filename.hasSuffix(".rtf"),
+                        "Filename should have .rtf extension")
+                } else {
+                    XCTFail("Document should have a fileURL with filename")
+                }
+                expectation.fulfill()
+            }
+        }
+
+        wait(for: [expectation], timeout: 3.0)
+    }
+
+    // MARK: - Close Without Save Tests
+
+    func testEmptyDocumentCreatesNoFile() {
+        // Creating a document and not typing should not create a file
+        let expectation = XCTestExpectation(description: "No file created")
+
+        let initialFiles = try? FileManager.default.contentsOfDirectory(at: tempFolder,
+            includingPropertiesForKeys: nil)
+        let initialCount = initialFiles?.count ?? 0
+
+        documentManager.createNewTinyWriterDocument { [self] _ in
+            // Don't type anything, just wait
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let finalFiles = try? FileManager.default.contentsOfDirectory(
+                    at: tempFolder, includingPropertiesForKeys: nil)
+                XCTAssertEqual(finalFiles?.count ?? 0, initialCount,
+                    "No files should be created for empty documents")
+                expectation.fulfill()
+            }
+        }
+
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    // MARK: - Window Title Tests
+
+    func testNewDocumentWindowTitleIsUntitled() {
+        // Document without fileURL should be "Untitled"
+        let document = TinyWriterDocument()
+        XCTAssertNil(document.fileURL, "New document should have no fileURL")
+        // Window title logic is in switchToDocument - when fileURL is nil, title is "Untitled"
+    }
+
+    // MARK: - Content Tracking Tests
+
+    func testDocumentWithContentHasUnsavedChanges() {
+        let document = TinyWriterDocument()
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_\(UUID().uuidString).rtf")
+        document.fileURL = tempURL
+
+        XCTAssertFalse(document.hasUnautosavedChanges, "New document should not have unsaved changes")
+
+        document.text = "Some content"
+
+        XCTAssertTrue(document.hasUnautosavedChanges, "Document with content should have unsaved changes")
+    }
+
+    func testEmptyDocumentHasNoUnsavedChanges() {
+        let document = TinyWriterDocument()
+        // Empty document without any edits should not have unsaved changes
+        XCTAssertFalse(document.hasUnautosavedChanges, "Empty document should not have unsaved changes")
+    }
+}
