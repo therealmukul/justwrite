@@ -3963,3 +3963,386 @@ class TestCursorUpdateView: NSView {
         }
     }
 }
+
+// MARK: - PDF Export Tests
+
+final class PDFExportTests: XCTestCase {
+
+    // MARK: - RTF Loading Tests
+
+    func testCanLoadRTFDataAsAttributedString() throws {
+        // Create a document with formatted text
+        let doc = TinyWriterDocument()
+        let baseFont = NSFont.systemFont(ofSize: 16)
+        let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+
+        let attrText = NSMutableAttributedString(string: "Hello World")
+        attrText.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 5))
+        attrText.addAttribute(.font, value: baseFont, range: NSRange(location: 5, length: 6))
+        doc.attributedText = attrText
+
+        // Save as RTF
+        let rtfData = try doc.data(ofType: UTType.rtf.identifier)
+
+        // Load back as NSAttributedString
+        let loadedAttrString = NSAttributedString(rtf: rtfData, documentAttributes: nil)
+
+        XCTAssertNotNil(loadedAttrString, "Should be able to load RTF data as NSAttributedString")
+        XCTAssertEqual(loadedAttrString?.string, "Hello World", "Text content should be preserved")
+
+        // Verify bold is preserved in first 5 characters
+        var hasBold = false
+        loadedAttrString?.enumerateAttribute(.font, in: NSRange(location: 0, length: 5), options: []) { value, _, _ in
+            if let font = value as? NSFont {
+                hasBold = NSFontManager.shared.traits(of: font).contains(.boldFontMask)
+            }
+        }
+        XCTAssertTrue(hasBold, "Bold formatting should be preserved when loading RTF")
+    }
+
+    func testRTFPreservesItalicFormatting() throws {
+        let doc = TinyWriterDocument()
+        let baseFont = NSFont.systemFont(ofSize: 16)
+        let italicFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+
+        let attrText = NSMutableAttributedString(string: "Italic text")
+        attrText.addAttribute(.font, value: italicFont, range: NSRange(location: 0, length: 6))
+        doc.attributedText = attrText
+
+        // Save and reload as RTF
+        let rtfData = try doc.data(ofType: UTType.rtf.identifier)
+        let loadedAttrString = NSAttributedString(rtf: rtfData, documentAttributes: nil)
+
+        XCTAssertNotNil(loadedAttrString)
+
+        // Verify italic is preserved
+        var hasItalic = false
+        loadedAttrString?.enumerateAttribute(.font, in: NSRange(location: 0, length: 6), options: []) { value, _, _ in
+            if let font = value as? NSFont {
+                hasItalic = NSFontManager.shared.traits(of: font).contains(.italicFontMask)
+            }
+        }
+        XCTAssertTrue(hasItalic, "Italic formatting should be preserved when loading RTF")
+    }
+
+    func testRTFPreservesCenterAlignment() throws {
+        let doc = TinyWriterDocument()
+
+        let attrText = NSMutableAttributedString(string: "Centered text")
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        attrText.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrText.length))
+        attrText.addAttribute(.font, value: NSFont.systemFont(ofSize: 16), range: NSRange(location: 0, length: attrText.length))
+        doc.attributedText = attrText
+
+        // Save and reload as RTF
+        let rtfData = try doc.data(ofType: UTType.rtf.identifier)
+        let loadedAttrString = NSAttributedString(rtf: rtfData, documentAttributes: nil)
+
+        XCTAssertNotNil(loadedAttrString)
+
+        // Verify center alignment is preserved
+        var isCentered = false
+        loadedAttrString?.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: loadedAttrString!.length), options: []) { value, _, _ in
+            if let style = value as? NSParagraphStyle {
+                isCentered = style.alignment == .center
+            }
+        }
+        XCTAssertTrue(isCentered, "Center alignment should be preserved when loading RTF")
+    }
+
+    func testRTFPreservesRightAlignment() throws {
+        let doc = TinyWriterDocument()
+
+        let attrText = NSMutableAttributedString(string: "Right aligned text")
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .right
+        attrText.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrText.length))
+        attrText.addAttribute(.font, value: NSFont.systemFont(ofSize: 16), range: NSRange(location: 0, length: attrText.length))
+        doc.attributedText = attrText
+
+        // Save and reload as RTF
+        let rtfData = try doc.data(ofType: UTType.rtf.identifier)
+        let loadedAttrString = NSAttributedString(rtf: rtfData, documentAttributes: nil)
+
+        XCTAssertNotNil(loadedAttrString)
+
+        // Verify right alignment is preserved
+        var isRightAligned = false
+        loadedAttrString?.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: loadedAttrString!.length), options: []) { value, _, _ in
+            if let style = value as? NSParagraphStyle {
+                isRightAligned = style.alignment == .right
+            }
+        }
+        XCTAssertTrue(isRightAligned, "Right alignment should be preserved when loading RTF")
+    }
+
+    func testRTFPreservesMixedFormatting() throws {
+        let doc = TinyWriterDocument()
+        let fontManager = NSFontManager.shared
+        let baseFont = NSFont.systemFont(ofSize: 16)
+        let boldFont = fontManager.convert(baseFont, toHaveTrait: .boldFontMask)
+        let italicFont = fontManager.convert(baseFont, toHaveTrait: .italicFontMask)
+
+        // "Bold and Italic text"
+        let attrText = NSMutableAttributedString(string: "Bold and Italic text")
+        attrText.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 4))  // "Bold"
+        attrText.addAttribute(.font, value: baseFont, range: NSRange(location: 4, length: 5))  // " and "
+        attrText.addAttribute(.font, value: italicFont, range: NSRange(location: 9, length: 6)) // "Italic"
+        attrText.addAttribute(.font, value: baseFont, range: NSRange(location: 15, length: 5)) // " text"
+        doc.attributedText = attrText
+
+        // Save and reload as RTF
+        let rtfData = try doc.data(ofType: UTType.rtf.identifier)
+        let loadedAttrString = NSAttributedString(rtf: rtfData, documentAttributes: nil)
+
+        XCTAssertNotNil(loadedAttrString)
+        XCTAssertEqual(loadedAttrString?.string, "Bold and Italic text")
+
+        // Verify bold in "Bold"
+        var hasBold = false
+        loadedAttrString?.enumerateAttribute(.font, in: NSRange(location: 0, length: 4), options: []) { value, _, _ in
+            if let font = value as? NSFont {
+                hasBold = fontManager.traits(of: font).contains(.boldFontMask)
+            }
+        }
+        XCTAssertTrue(hasBold, "Bold should be preserved in 'Bold'")
+
+        // Verify italic in "Italic"
+        var hasItalic = false
+        loadedAttrString?.enumerateAttribute(.font, in: NSRange(location: 9, length: 6), options: []) { value, _, _ in
+            if let font = value as? NSFont {
+                hasItalic = fontManager.traits(of: font).contains(.italicFontMask)
+            }
+        }
+        XCTAssertTrue(hasItalic, "Italic should be preserved in 'Italic'")
+    }
+
+    // MARK: - PDF Generation Tests
+
+    func testPDFExportCreatesValidFile() throws {
+        let attrString = NSAttributedString(string: "Test content", attributes: [
+            .font: NSFont.systemFont(ofSize: 16),
+            .foregroundColor: NSColor.black
+        ])
+
+        let pdfURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_pdf_\(UUID()).pdf")
+        defer { try? FileManager.default.removeItem(at: pdfURL) }
+
+        // Generate PDF using Core Text (same approach as the app)
+        createTestPDF(attributedContent: attrString, saveURL: pdfURL)
+
+        // Verify PDF was created and has content
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pdfURL.path), "PDF file should be created")
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: pdfURL.path)
+        let size = attrs[.size] as? Int ?? 0
+        XCTAssertGreaterThan(size, 0, "PDF should have content")
+    }
+
+    func testPDFWithBoldTextCreatesValidFile() throws {
+        let boldFont = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 16), toHaveTrait: .boldFontMask)
+        let attrString = NSMutableAttributedString(string: "Bold text here")
+        attrString.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 4))
+
+        let pdfURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_bold_pdf_\(UUID()).pdf")
+        defer { try? FileManager.default.removeItem(at: pdfURL) }
+
+        createTestPDF(attributedContent: attrString, saveURL: pdfURL)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pdfURL.path), "PDF with bold text should be created")
+    }
+
+    func testPDFWithCenterAlignmentCreatesValidFile() throws {
+        let attrString = NSMutableAttributedString(string: "Centered text")
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        attrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrString.length))
+        attrString.addAttribute(.font, value: NSFont.systemFont(ofSize: 16), range: NSRange(location: 0, length: attrString.length))
+
+        let pdfURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_center_pdf_\(UUID()).pdf")
+        defer { try? FileManager.default.removeItem(at: pdfURL) }
+
+        createTestPDF(attributedContent: attrString, saveURL: pdfURL)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pdfURL.path), "PDF with center alignment should be created")
+    }
+
+    func testFullExportFlowRTFToPDF() throws {
+        // Create document with formatting
+        let doc = TinyWriterDocument()
+        let boldFont = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 16), toHaveTrait: .boldFontMask)
+        let attrText = NSMutableAttributedString(string: "Test document with bold")
+        attrText.addAttribute(.font, value: boldFont, range: NSRange(location: 19, length: 4)) // "bold"
+        attrText.addAttribute(.font, value: NSFont.systemFont(ofSize: 16), range: NSRange(location: 0, length: 19))
+        doc.attributedText = attrText
+
+        // Save as RTF
+        let rtfURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_export_\(UUID()).rtf")
+        let pdfURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_export_\(UUID()).pdf")
+        defer {
+            try? FileManager.default.removeItem(at: rtfURL)
+            try? FileManager.default.removeItem(at: pdfURL)
+        }
+
+        let rtfData = try doc.data(ofType: UTType.rtf.identifier)
+        try rtfData.write(to: rtfURL)
+
+        // Load RTF and convert to PDF (simulating the fixed export flow)
+        let loadedData = try Data(contentsOf: rtfURL)
+        guard let loadedAttrString = NSAttributedString(rtf: loadedData, documentAttributes: nil) else {
+            XCTFail("Should be able to load RTF data")
+            return
+        }
+
+        // Verify formatting survived the RTF round-trip
+        var hasBold = false
+        loadedAttrString.enumerateAttribute(.font, in: NSRange(location: 19, length: 4), options: []) { value, _, _ in
+            if let font = value as? NSFont {
+                hasBold = NSFontManager.shared.traits(of: font).contains(.boldFontMask)
+            }
+        }
+        XCTAssertTrue(hasBold, "Bold formatting should survive RTF round-trip")
+
+        // Create PDF from the loaded attributed string
+        createTestPDF(attributedContent: loadedAttrString, saveURL: pdfURL)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pdfURL.path), "PDF should be created from RTF")
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: pdfURL.path)
+        let size = attrs[.size] as? Int ?? 0
+        XCTAssertGreaterThan(size, 0, "PDF should have content")
+    }
+
+    // MARK: - Font Scaling Tests
+
+    func testScaleAttributedStringPreservesBoldTrait() {
+        let fontManager = NSFontManager.shared
+        let boldFont = fontManager.convert(NSFont.systemFont(ofSize: 16), toHaveTrait: .boldFontMask)
+
+        let attrString = NSMutableAttributedString(string: "Bold text")
+        attrString.addAttribute(.font, value: boldFont, range: NSRange(location: 0, length: 4))
+
+        let scaled = scaleAttributedStringForTest(attrString, scaleFactor: 0.65)
+
+        // Verify bold is preserved after scaling
+        var hasBold = false
+        var scaledSize: CGFloat = 0
+        scaled.enumerateAttribute(.font, in: NSRange(location: 0, length: 4), options: []) { value, _, _ in
+            if let font = value as? NSFont {
+                hasBold = fontManager.traits(of: font).contains(.boldFontMask)
+                scaledSize = font.pointSize
+            }
+        }
+
+        XCTAssertTrue(hasBold, "Bold trait should be preserved after scaling")
+        XCTAssertEqual(scaledSize, 16 * 0.65, accuracy: 0.1, "Font size should be scaled")
+    }
+
+    func testScaleAttributedStringPreservesItalicTrait() {
+        let fontManager = NSFontManager.shared
+        let italicFont = fontManager.convert(NSFont.systemFont(ofSize: 16), toHaveTrait: .italicFontMask)
+
+        let attrString = NSMutableAttributedString(string: "Italic text")
+        attrString.addAttribute(.font, value: italicFont, range: NSRange(location: 0, length: 6))
+
+        let scaled = scaleAttributedStringForTest(attrString, scaleFactor: 0.65)
+
+        // Verify italic is preserved after scaling
+        var hasItalic = false
+        scaled.enumerateAttribute(.font, in: NSRange(location: 0, length: 6), options: []) { value, _, _ in
+            if let font = value as? NSFont {
+                hasItalic = fontManager.traits(of: font).contains(.italicFontMask)
+            }
+        }
+
+        XCTAssertTrue(hasItalic, "Italic trait should be preserved after scaling")
+    }
+
+    func testScaleAttributedStringPreservesAlignment() {
+        let attrString = NSMutableAttributedString(string: "Centered")
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        attrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrString.length))
+        attrString.addAttribute(.font, value: NSFont.systemFont(ofSize: 16), range: NSRange(location: 0, length: attrString.length))
+
+        let scaled = scaleAttributedStringForTest(attrString, scaleFactor: 0.65)
+
+        // Verify alignment is preserved after scaling
+        var isCentered = false
+        scaled.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: scaled.length), options: []) { value, _, _ in
+            if let style = value as? NSParagraphStyle {
+                isCentered = style.alignment == .center
+            }
+        }
+
+        XCTAssertTrue(isCentered, "Center alignment should be preserved after scaling")
+    }
+
+    // MARK: - Test Helpers
+
+    /// Creates a PDF from an attributed string (mirrors the app's createPDF logic)
+    private func createTestPDF(attributedContent: NSAttributedString, saveURL: URL) {
+        let pageWidth: CGFloat = 612
+        let pageHeight: CGFloat = 792
+        let marginY: CGFloat = 72
+        let marginX: CGFloat = 72
+        let textWidth = pageWidth - (marginX * 2)
+        let textHeight = pageHeight - (marginY * 2)
+
+        // Scale the attributed string
+        let scaledString = scaleAttributedStringForTest(attributedContent, scaleFactor: 0.65)
+
+        // Set text color to black
+        let mutable = NSMutableAttributedString(attributedString: scaledString)
+        mutable.addAttribute(.foregroundColor, value: NSColor.black, range: NSRange(location: 0, length: mutable.length))
+
+        var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+        guard let context = CGContext(saveURL as CFURL, mediaBox: &mediaBox, nil) else { return }
+
+        let framesetter = CTFramesetterCreateWithAttributedString(mutable)
+        var currentRange = CFRange(location: 0, length: 0)
+
+        while currentRange.location < mutable.length {
+            context.beginPage(mediaBox: &mediaBox)
+            let framePath = CGPath(rect: CGRect(x: marginX, y: marginY, width: textWidth, height: textHeight), transform: nil)
+            let frame = CTFramesetterCreateFrame(framesetter, currentRange, framePath, nil)
+            context.textMatrix = .identity
+            CTFrameDraw(frame, context)
+            let visibleRange = CTFrameGetVisibleStringRange(frame)
+            currentRange.location += visibleRange.length
+            context.endPage()
+        }
+
+        context.closePDF()
+    }
+
+    /// Scales fonts in an attributed string while preserving traits (mirrors the app's helper)
+    private func scaleAttributedStringForTest(_ attributedString: NSAttributedString, scaleFactor: CGFloat) -> NSAttributedString {
+        let mutable = NSMutableAttributedString(attributedString: attributedString)
+        let fullRange = NSRange(location: 0, length: mutable.length)
+        let fontManager = NSFontManager.shared
+
+        // Scale fonts while preserving traits
+        mutable.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
+            if let font = value as? NSFont {
+                let traits = fontManager.traits(of: font)
+                let scaledSize = font.pointSize * scaleFactor
+
+                var scaledFont = NSFont(name: font.fontName, size: scaledSize)
+                    ?? NSFont.systemFont(ofSize: scaledSize)
+
+                if traits.contains(.boldFontMask) {
+                    scaledFont = fontManager.convert(scaledFont, toHaveTrait: .boldFontMask)
+                }
+                if traits.contains(.italicFontMask) {
+                    scaledFont = fontManager.convert(scaledFont, toHaveTrait: .italicFontMask)
+                }
+
+                mutable.addAttribute(.font, value: scaledFont, range: range)
+            }
+        }
+
+        return mutable
+    }
+}

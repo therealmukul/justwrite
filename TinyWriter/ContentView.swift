@@ -562,8 +562,21 @@ struct NoteRow: View {
     }
 
     private func exportAsPDF(url: URL) {
-        // Read the note content
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+        // Read file as Data (not String) to properly handle RTF format
+        guard let data = try? Data(contentsOf: url) else { return }
+
+        // Parse as RTF to preserve formatting (bold, italic, alignment, etc.)
+        let attributedContent: NSAttributedString
+        if let rtfContent = NSAttributedString(rtf: data, documentAttributes: nil) {
+            attributedContent = rtfContent
+        } else {
+            // Fallback to plain text if RTF parsing fails
+            let plainText = String(decoding: data, as: UTF8.self)
+            attributedContent = NSAttributedString(string: plainText, attributes: [
+                .font: getFont(size: CGFloat(fontSize)),
+                .foregroundColor: NSColor.black
+            ])
+        }
 
         // Create save panel
         let savePanel = NSSavePanel()
@@ -572,7 +585,7 @@ struct NoteRow: View {
         savePanel.title = "Export as PDF"
 
         if savePanel.runModal() == .OK, let saveURL = savePanel.url {
-            createPDF(content: content, saveURL: saveURL)
+            createPDF(attributedContent: attributedContent, saveURL: saveURL)
         }
     }
 
@@ -593,19 +606,18 @@ struct NoteRow: View {
 
     @AppStorage("lineLength") private var lineLength: Double = 65
 
-    private func createPDF(content: String, saveURL: URL) {
+    private func createPDF(attributedContent: NSAttributedString, saveURL: URL) {
         // PDF page settings
         let pageWidth: CGFloat = 612  // US Letter width in points
         let pageHeight: CGFloat = 792 // US Letter height in points
         let marginY: CGFloat = 72     // 1 inch top/bottom margins
 
-        // Scale font size for PDF (screen fonts render smaller than print)
-        // Use 0.65 scale factor to match visual appearance
-        let pdfFontSize = CGFloat(fontSize) * 0.65
-        let pdfLineSpacing = CGFloat(lineSpacing) * 0.65
+        // Scale factor for PDF (fonts render smaller in PDF than on screen)
+        let scaleFactor: CGFloat = 0.65
+        let pdfFontSize = CGFloat(fontSize) * scaleFactor
+        let pdfLineSpacing = CGFloat(lineSpacing) * scaleFactor
 
         // Calculate text width based on line length setting
-        // Average character width is approximately 0.5 * fontSize for most fonts
         let optimalTextWidth = CGFloat(lineLength) * pdfFontSize * 0.5
         let maxTextWidth = pageWidth - 72  // At least 0.5 inch margins on each side
         let textWidth = min(optimalTextWidth, maxTextWidth)
@@ -614,29 +626,23 @@ struct NoteRow: View {
         // Center text horizontally on page
         let marginX = (pageWidth - textWidth) / 2
 
-        // Create attributed string with formatting
-        let font = getFont(size: pdfFontSize)
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = pdfLineSpacing
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.black,
-            .paragraphStyle: paragraphStyle
-        ]
-
-        let attributedString = NSAttributedString(string: content, attributes: attributes)
+        // Scale the attributed string while preserving all formatting (bold, italic, alignment)
+        let scaledString = scaleAttributedString(
+            attributedContent,
+            scaleFactor: scaleFactor,
+            defaultLineSpacing: pdfLineSpacing
+        )
 
         // Create PDF context
         var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
 
         guard let context = CGContext(saveURL as CFURL, mediaBox: &mediaBox, nil) else { return }
 
-        // Calculate text layout
-        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
+        // Calculate text layout (Core Text handles alignment via paragraph styles)
+        let framesetter = CTFramesetterCreateWithAttributedString(scaledString)
         var currentRange = CFRange(location: 0, length: 0)
 
-        while currentRange.location < attributedString.length {
+        while currentRange.location < scaledString.length {
             // Start new page
             context.beginPage(mediaBox: &mediaBox)
 
@@ -656,6 +662,52 @@ struct NoteRow: View {
         }
 
         context.closePDF()
+    }
+
+    /// Scales fonts in an attributed string while preserving all other attributes (bold, italic, alignment)
+    private func scaleAttributedString(
+        _ attributedString: NSAttributedString,
+        scaleFactor: CGFloat,
+        defaultLineSpacing: CGFloat
+    ) -> NSAttributedString {
+        let mutable = NSMutableAttributedString(attributedString: attributedString)
+        let fullRange = NSRange(location: 0, length: mutable.length)
+        let fontManager = NSFontManager.shared
+
+        // Scale fonts while preserving traits (bold, italic)
+        mutable.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
+            if let font = value as? NSFont {
+                let traits = fontManager.traits(of: font)
+                let scaledSize = font.pointSize * scaleFactor
+
+                var scaledFont = NSFont(name: font.fontName, size: scaledSize)
+                    ?? NSFont.systemFont(ofSize: scaledSize)
+
+                // Re-apply traits to ensure they're preserved
+                if traits.contains(.boldFontMask) {
+                    scaledFont = fontManager.convert(scaledFont, toHaveTrait: .boldFontMask)
+                }
+                if traits.contains(.italicFontMask) {
+                    scaledFont = fontManager.convert(scaledFont, toHaveTrait: .italicFontMask)
+                }
+
+                mutable.addAttribute(.font, value: scaledFont, range: range)
+            }
+        }
+
+        // Update line spacing while preserving alignment
+        mutable.enumerateAttribute(.paragraphStyle, in: fullRange, options: []) { value, range, _ in
+            let existingStyle = value as? NSParagraphStyle ?? NSParagraphStyle.default
+            let newStyle = NSMutableParagraphStyle()
+            newStyle.setParagraphStyle(existingStyle)  // Preserves alignment
+            newStyle.lineSpacing = defaultLineSpacing
+            mutable.addAttribute(.paragraphStyle, value: newStyle, range: range)
+        }
+
+        // Set text color to black for print
+        mutable.addAttribute(.foregroundColor, value: NSColor.black, range: fullRange)
+
+        return mutable
     }
 }
 
