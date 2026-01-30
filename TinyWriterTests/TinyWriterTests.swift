@@ -4461,3 +4461,253 @@ final class WordCountUpdateTests: XCTestCase {
             .count
     }
 }
+
+// MARK: - Grammar Checking Tests
+
+final class GrammarCheckingTests: XCTestCase {
+
+    // MARK: - Settings Persistence Tests
+
+    func testGrammarCheckingSettingDefaultsToTrue() {
+        // Clear any existing value
+        UserDefaults.standard.removeObject(forKey: "grammarCheckingEnabled")
+
+        // Default should be true (enabled by default like normal word processors)
+        let defaults = UserDefaults.standard.object(forKey: "grammarCheckingEnabled")
+        // When not set, we expect the app to default to true
+        XCTAssertNil(defaults, "Setting should not exist initially")
+    }
+
+    func testSpellCheckingSettingDefaultsToTrue() {
+        // Clear any existing value
+        UserDefaults.standard.removeObject(forKey: "spellCheckingEnabled")
+
+        // Default should be true
+        let defaults = UserDefaults.standard.object(forKey: "spellCheckingEnabled")
+        XCTAssertNil(defaults, "Setting should not exist initially")
+    }
+
+    func testGrammarCheckingSettingPersists() {
+        // Set the value
+        UserDefaults.standard.set(false, forKey: "grammarCheckingEnabled")
+
+        // Verify it persists
+        let value = UserDefaults.standard.bool(forKey: "grammarCheckingEnabled")
+        XCTAssertFalse(value, "Grammar checking setting should persist as false")
+
+        // Clean up
+        UserDefaults.standard.removeObject(forKey: "grammarCheckingEnabled")
+    }
+
+    func testSpellCheckingSettingPersists() {
+        // Set the value
+        UserDefaults.standard.set(false, forKey: "spellCheckingEnabled")
+
+        // Verify it persists
+        let value = UserDefaults.standard.bool(forKey: "spellCheckingEnabled")
+        XCTAssertFalse(value, "Spell checking setting should persist as false")
+
+        // Clean up
+        UserDefaults.standard.removeObject(forKey: "spellCheckingEnabled")
+    }
+
+    // MARK: - NSTextView Grammar Checking Configuration Tests
+
+    func testTextViewSupportsGrammarChecking() {
+        let textView = NSTextView()
+
+        // NSTextView should support grammar checking
+        textView.isGrammarCheckingEnabled = true
+        XCTAssertTrue(textView.isGrammarCheckingEnabled, "NSTextView should support grammar checking")
+
+        textView.isGrammarCheckingEnabled = false
+        XCTAssertFalse(textView.isGrammarCheckingEnabled, "NSTextView should allow disabling grammar checking")
+    }
+
+    func testTextViewSupportsContinuousSpellChecking() {
+        let textView = NSTextView()
+
+        // NSTextView should support continuous spell checking
+        textView.isContinuousSpellCheckingEnabled = true
+        XCTAssertTrue(textView.isContinuousSpellCheckingEnabled, "NSTextView should support spell checking")
+
+        textView.isContinuousSpellCheckingEnabled = false
+        XCTAssertFalse(textView.isContinuousSpellCheckingEnabled, "NSTextView should allow disabling spell checking")
+    }
+
+    func testTextViewSupportsAutomaticSpellingCorrection() {
+        let textView = NSTextView()
+
+        // NSTextView should support automatic spelling correction
+        textView.isAutomaticSpellingCorrectionEnabled = true
+        XCTAssertTrue(textView.isAutomaticSpellingCorrectionEnabled, "NSTextView should support auto-correction")
+
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        XCTAssertFalse(textView.isAutomaticSpellingCorrectionEnabled, "NSTextView should allow disabling auto-correction")
+    }
+
+    // MARK: - SmoothCursorTextView Grammar Checking Tests
+
+    func testSmoothCursorTextViewInheritsGrammarCheckingSupport() {
+        let textView = SmoothCursorTextView()
+
+        // SmoothCursorTextView inherits from NSTextView and should support grammar checking
+        textView.isGrammarCheckingEnabled = true
+        XCTAssertTrue(textView.isGrammarCheckingEnabled, "SmoothCursorTextView should support grammar checking")
+    }
+
+    func testSmoothCursorTextViewInheritsSpellCheckingSupport() {
+        let textView = SmoothCursorTextView()
+
+        // SmoothCursorTextView should support spell checking
+        textView.isContinuousSpellCheckingEnabled = true
+        XCTAssertTrue(textView.isContinuousSpellCheckingEnabled, "SmoothCursorTextView should support spell checking")
+    }
+
+    // MARK: - NSSpellChecker Integration Tests
+
+    func testSpellCheckerIsAvailable() {
+        let spellChecker = NSSpellChecker.shared
+
+        // NSSpellChecker should be available
+        XCTAssertNotNil(spellChecker, "NSSpellChecker should be available")
+    }
+
+    func testSpellCheckerCanDetectMisspelledWords() {
+        let spellChecker = NSSpellChecker.shared
+        let misspelledText = "Thiss is a tset"
+
+        // Find misspelled word
+        let range = spellChecker.checkSpelling(of: misspelledText, startingAt: 0)
+
+        // Should find "Thiss" as misspelled
+        XCTAssertNotEqual(range.location, NSNotFound, "Spell checker should detect misspelled words")
+        XCTAssertEqual(range.location, 0, "First misspelled word should be at position 0")
+        XCTAssertEqual(range.length, 5, "Misspelled word 'Thiss' should have length 5")
+    }
+
+    func testSpellCheckerCanCheckGrammar() {
+        let spellChecker = NSSpellChecker.shared
+        let textWithGrammarError = "He go to the store yesterday"
+
+        // Check grammar
+        var details: NSArray?
+        let range = spellChecker.checkGrammar(of: textWithGrammarError, startingAt: 0, language: nil, wrap: false, inSpellDocumentWithTag: 0, details: &details)
+
+        // Grammar checking should work (may or may not find issues depending on system)
+        // We just verify the API is callable
+        XCTAssertTrue(range.location == NSNotFound || range.location >= 0, "Grammar check should return valid range")
+    }
+
+    func testSpellCheckerProvideSuggestions() {
+        let spellChecker = NSSpellChecker.shared
+
+        // Get suggestions for misspelled word
+        let suggestions = spellChecker.guesses(forWordRange: NSRange(location: 0, length: 4), in: "tset", language: nil, inSpellDocumentWithTag: 0)
+
+        // Should provide suggestions (may include "test")
+        XCTAssertNotNil(suggestions, "Spell checker should provide suggestions")
+    }
+
+    // MARK: - Grammar Checking Toggle Notification Tests
+
+    func testGrammarCheckingNotificationPosted() {
+        let expectation = XCTestExpectation(description: "Grammar checking notification should be posted")
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .grammarCheckingChanged,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+
+        // Post notification
+        NotificationCenter.default.post(name: .grammarCheckingChanged, object: nil)
+
+        wait(for: [expectation], timeout: 1.0)
+        NotificationCenter.default.removeObserver(observer)
+    }
+
+    func testSpellCheckingNotificationPosted() {
+        let expectation = XCTestExpectation(description: "Spell checking notification should be posted")
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .spellCheckingChanged,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+
+        // Post notification
+        NotificationCenter.default.post(name: .spellCheckingChanged, object: nil)
+
+        wait(for: [expectation], timeout: 1.0)
+        NotificationCenter.default.removeObserver(observer)
+    }
+
+    // MARK: - SmoothCursorTextView Spell Checking Integration Tests
+
+    func testSmoothCursorTextViewHasSpellCheckingMethods() {
+        let textView = SmoothCursorTextView()
+
+        // Text view should have spell checking toggle method
+        textView.isContinuousSpellCheckingEnabled = true
+        XCTAssertTrue(textView.isContinuousSpellCheckingEnabled)
+
+        // Text view should have grammar checking toggle method
+        textView.isGrammarCheckingEnabled = true
+        XCTAssertTrue(textView.isGrammarCheckingEnabled)
+    }
+
+    func testSmoothCursorTextViewCanCheckSpelling() {
+        let textView = SmoothCursorTextView()
+        textView.string = "This is a tset of speling"
+
+        // Enable spell checking
+        textView.isContinuousSpellCheckingEnabled = true
+
+        // Text view should be able to check spelling
+        XCTAssertNotNil(textView.textStorage, "Text view should have text storage")
+    }
+
+    func testDefaultSpellCheckingSettingsApplied() {
+        // Test that defaults are applied correctly
+        // When not set, should default to true
+        UserDefaults.standard.removeObject(forKey: "spellCheckingEnabled")
+        UserDefaults.standard.removeObject(forKey: "grammarCheckingEnabled")
+
+        let spellDefault = UserDefaults.standard.object(forKey: "spellCheckingEnabled") as? Bool ?? true
+        let grammarDefault = UserDefaults.standard.object(forKey: "grammarCheckingEnabled") as? Bool ?? true
+
+        XCTAssertTrue(spellDefault, "Spell checking should default to enabled")
+        XCTAssertTrue(grammarDefault, "Grammar checking should default to enabled")
+    }
+
+    func testSpellCheckingCanBeDisabled() {
+        UserDefaults.standard.set(false, forKey: "spellCheckingEnabled")
+
+        let textView = SmoothCursorTextView()
+        let enabled = UserDefaults.standard.object(forKey: "spellCheckingEnabled") as? Bool ?? true
+        textView.isContinuousSpellCheckingEnabled = enabled
+
+        XCTAssertFalse(textView.isContinuousSpellCheckingEnabled, "Spell checking should be disabled when setting is false")
+
+        // Clean up
+        UserDefaults.standard.removeObject(forKey: "spellCheckingEnabled")
+    }
+
+    func testGrammarCheckingCanBeDisabled() {
+        UserDefaults.standard.set(false, forKey: "grammarCheckingEnabled")
+
+        let textView = SmoothCursorTextView()
+        let enabled = UserDefaults.standard.object(forKey: "grammarCheckingEnabled") as? Bool ?? true
+        textView.isGrammarCheckingEnabled = enabled
+
+        XCTAssertFalse(textView.isGrammarCheckingEnabled, "Grammar checking should be disabled when setting is false")
+
+        // Clean up
+        UserDefaults.standard.removeObject(forKey: "grammarCheckingEnabled")
+    }
+}

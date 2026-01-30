@@ -10,6 +10,8 @@ struct SettingsPanel: View {
     @AppStorage("fontFamily") private var fontFamily: String = "EB Garamond"
     @AppStorage("showWordCount") private var showWordCount: Bool = true
     @AppStorage("launchBehavior") private var launchBehavior: LaunchBehavior = .lastEdited
+    @AppStorage("spellCheckingEnabled") private var spellCheckingEnabled: Bool = true
+    @AppStorage("grammarCheckingEnabled") private var grammarCheckingEnabled: Bool = true
 
     private let availableFonts = [
         "EB Garamond",
@@ -49,6 +51,34 @@ struct SettingsPanel: View {
                 Toggle("", isOn: $showWordCount)
                     .toggleStyle(.switch)
                     .labelsHidden()
+            }
+
+            // Spell checking toggle
+            HStack {
+                Text("Spell Checking")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Toggle("", isOn: $spellCheckingEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .onChange(of: spellCheckingEnabled) { _, _ in
+                        NotificationCenter.default.post(name: .spellCheckingChanged, object: nil)
+                    }
+            }
+
+            // Grammar checking toggle
+            HStack {
+                Text("Grammar Checking")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Toggle("", isOn: $grammarCheckingEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .onChange(of: grammarCheckingEnabled) { _, _ in
+                        NotificationCenter.default.post(name: .grammarCheckingChanged, object: nil)
+                    }
             }
 
             Divider()

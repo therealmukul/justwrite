@@ -504,39 +504,137 @@ class SmoothCursorTextView: NSTextView {
 
     // MARK: - Right Click Formatting
 
-    // Override right-click to show formatting toolbar instead of context menu
+    // Override right-click to show formatting toolbar for selections, or spelling menu for misspelled words
     override func rightMouseDown(with event: NSEvent) {
         let range = selectedRange()
-        guard range.length > 0 else {
-            // No selection, hide toolbar and do nothing
+
+        if range.length > 0 {
+            // Has selection - show formatting toolbar
+            guard let layoutManager = layoutManager, let textContainer = textContainer else { return }
+
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            let selectionRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+
+            // Convert to view coordinates
+            var rectInView = selectionRect
+            rectInView.origin.x += textContainerInset.width
+            rectInView.origin.y += textContainerInset.height
+
+            // Convert to window coordinates
+            let rectInWindow = convert(rectInView, to: nil)
+
+            NotificationCenter.default.post(
+                name: .showFormattingToolbar,
+                object: nil,
+                userInfo: ["selectionRect": rectInWindow]
+            )
+        } else {
+            // No selection - check if clicking on a misspelled word for spell checking context menu
             NotificationCenter.default.post(name: .hideFormattingToolbar, object: nil)
-            return
+
+            // Let the default right-click behavior handle spelling suggestions
+            super.rightMouseDown(with: event)
         }
-
-        // Get the rect of the selection for positioning
-        guard let layoutManager = layoutManager, let textContainer = textContainer else { return }
-
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-        let selectionRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-
-        // Convert to view coordinates
-        var rectInView = selectionRect
-        rectInView.origin.x += textContainerInset.width
-        rectInView.origin.y += textContainerInset.height
-
-        // Convert to window coordinates
-        let rectInWindow = convert(rectInView, to: nil)
-
-        NotificationCenter.default.post(
-            name: .showFormattingToolbar,
-            object: nil,
-            userInfo: ["selectionRect": rectInWindow]
-        )
     }
 
-    // Return nil to prevent default context menu
+    // Provide context menu for spelling corrections when no selection
     override func menu(for event: NSEvent) -> NSMenu? {
+        let range = selectedRange()
+
+        // If there's a selection, don't show context menu (formatting toolbar is used instead)
+        if range.length > 0 {
+            return nil
+        }
+
+        // Get click location and find the word at that position
+        let pointInView = convert(event.locationInWindow, from: nil)
+        let adjustedPoint = NSPoint(
+            x: pointInView.x - textContainerInset.width,
+            y: pointInView.y - textContainerInset.height
+        )
+
+        guard let layoutManager = layoutManager,
+              let textContainer = textContainer else {
+            return nil
+        }
+
+        let charIndex = layoutManager.characterIndex(for: adjustedPoint, in: textContainer, fractionOfDistanceBetweenInsertionPoints: nil)
+
+        guard charIndex < string.count else {
+            return nil
+        }
+
+        // Find the word range at click position using NSTextView's selection granularity
+        let fullWordRange = selectionRange(forProposedRange: NSRange(location: charIndex, length: 0), granularity: .selectByWord)
+
+        // Check if the word is misspelled
+        let spellChecker = NSSpellChecker.shared
+        let word = (string as NSString).substring(with: fullWordRange)
+        let misspelledRange = spellChecker.checkSpelling(of: word, startingAt: 0)
+
+        if misspelledRange.location != NSNotFound {
+            // Word is misspelled - build spelling suggestions menu
+            let menu = NSMenu()
+
+            // Get suggestions
+            let suggestions = spellChecker.guesses(forWordRange: fullWordRange, in: string, language: nil, inSpellDocumentWithTag: 0) ?? []
+
+            if suggestions.isEmpty {
+                let noSuggestions = NSMenuItem(title: "No Suggestions", action: nil, keyEquivalent: "")
+                noSuggestions.isEnabled = false
+                menu.addItem(noSuggestions)
+            } else {
+                for suggestion in suggestions.prefix(5) {
+                    let item = NSMenuItem(title: suggestion, action: #selector(handleReplaceWithSuggestion(_:)), keyEquivalent: "")
+                    item.representedObject = (fullWordRange, suggestion)
+                    item.target = self
+                    menu.addItem(item)
+                }
+            }
+
+            menu.addItem(NSMenuItem.separator())
+
+            // Add "Learn Spelling" option
+            let learnItem = NSMenuItem(title: "Learn Spelling", action: #selector(handleLearnSpelling(_:)), keyEquivalent: "")
+            learnItem.representedObject = word
+            learnItem.target = self
+            menu.addItem(learnItem)
+
+            // Add "Ignore Spelling" option
+            let ignoreItem = NSMenuItem(title: "Ignore Spelling", action: #selector(handleIgnoreSpelling(_:)), keyEquivalent: "")
+            ignoreItem.representedObject = word
+            ignoreItem.target = self
+            menu.addItem(ignoreItem)
+
+            return menu
+        }
+
+        // Word is not misspelled - no context menu
         return nil
+    }
+
+    @objc private func handleReplaceWithSuggestion(_ sender: NSMenuItem) {
+        guard let (range, suggestion) = sender.representedObject as? (NSRange, String) else { return }
+
+        // Use shouldChangeText/didChangeText for undo support
+        guard shouldChangeText(in: range, replacementString: suggestion) else { return }
+
+        textStorage?.replaceCharacters(in: range, with: suggestion)
+        didChangeText()
+    }
+
+    @objc private func handleLearnSpelling(_ sender: NSMenuItem) {
+        guard let word = sender.representedObject as? String else { return }
+        NSSpellChecker.shared.learnWord(word)
+        // Re-check spelling to remove underline
+        checkTextInDocument(nil)
+    }
+
+    @objc private func handleIgnoreSpelling(_ sender: NSMenuItem) {
+        guard let word = sender.representedObject as? String else { return }
+        NSSpellChecker.shared.ignoreWord(word, inSpellDocumentWithTag: 0)
+        // Re-check spelling to remove underline
+        checkTextInDocument(nil)
     }
 
 }

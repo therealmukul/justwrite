@@ -39,6 +39,8 @@ extension Notification.Name {
     static let moveCursorToEnd = Notification.Name("moveCursorToEnd")
     static let untitledDocumentBecameDirty = Notification.Name("untitledDocumentBecameDirty")
     static let formattingDidChange = Notification.Name("formattingDidChange")
+    static let grammarCheckingChanged = Notification.Name("grammarCheckingChanged")
+    static let spellCheckingChanged = Notification.Name("spellCheckingChanged")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {

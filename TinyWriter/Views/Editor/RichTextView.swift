@@ -89,6 +89,13 @@ struct RichTextView: NSViewRepresentable {
         textView.isSelectable = true
         textView.drawsBackground = true
 
+        // Enable spell and grammar checking based on user preferences
+        let spellCheckingEnabled = UserDefaults.standard.object(forKey: "spellCheckingEnabled") as? Bool ?? true
+        let grammarCheckingEnabled = UserDefaults.standard.object(forKey: "grammarCheckingEnabled") as? Bool ?? true
+        textView.isContinuousSpellCheckingEnabled = spellCheckingEnabled
+        textView.isGrammarCheckingEnabled = grammarCheckingEnabled
+        textView.isAutomaticSpellingCorrectionEnabled = false  // User controls corrections manually
+
         // Enable layout manager GPU optimizations
         if let layoutManager = textView.layoutManager {
             layoutManager.allowsNonContiguousLayout = true
@@ -253,6 +260,8 @@ struct RichTextView: NSViewRepresentable {
         var minimumHorizontalPadding: CGFloat = 40
         private var formattingObserver: Any?
         private var formattingChangeObserver: Any?
+        private var spellCheckingObserver: Any?
+        private var grammarCheckingObserver: Any?
 
         var optimalTextWidth: CGFloat {
             parent.optimalTextWidth
@@ -360,6 +369,28 @@ struct RichTextView: NSViewRepresentable {
                 // Update the binding with the current attributed text (including formatting)
                 self.parent.attributedText = NSAttributedString(attributedString: textStorage)
             }
+
+            // Listen for spell checking setting changes
+            spellCheckingObserver = NotificationCenter.default.addObserver(
+                forName: .spellCheckingChanged,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let textView = self?.textView else { return }
+                let enabled = UserDefaults.standard.object(forKey: "spellCheckingEnabled") as? Bool ?? true
+                textView.isContinuousSpellCheckingEnabled = enabled
+            }
+
+            // Listen for grammar checking setting changes
+            grammarCheckingObserver = NotificationCenter.default.addObserver(
+                forName: .grammarCheckingChanged,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let textView = self?.textView else { return }
+                let enabled = UserDefaults.standard.object(forKey: "grammarCheckingEnabled") as? Bool ?? true
+                textView.isGrammarCheckingEnabled = enabled
+            }
         }
 
         deinit {
@@ -367,6 +398,12 @@ struct RichTextView: NSViewRepresentable {
                 NotificationCenter.default.removeObserver(observer)
             }
             if let observer = formattingChangeObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            if let observer = spellCheckingObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            if let observer = grammarCheckingObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
         }
