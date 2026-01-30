@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
 
 /// Manages document lifecycle for TinyWriter.
 /// Subclasses NSDocumentController to provide proper document handling
@@ -10,7 +11,27 @@ class TinyWriterDocumentManager: NSDocumentController, ObservableObject {
     // MARK: - Published State
 
     /// The currently active document displayed in the editor
-    @Published var activeDocument: TinyWriterDocument?
+    @Published var activeDocument: TinyWriterDocument? {
+        didSet {
+            // Cancel previous subscription
+            activeDocumentSubscription?.cancel()
+
+            // Subscribe to the new document's changes and forward to our objectWillChange
+            // This ensures SwiftUI views update when document content changes
+            if let document = activeDocument {
+                activeDocumentSubscription = document.objectWillChange
+                    .receive(on: DispatchQueue.main)
+                    .sink { [weak self] _ in
+                        self?.objectWillChange.send()
+                    }
+            } else {
+                activeDocumentSubscription = nil
+            }
+        }
+    }
+
+    /// Subscription to forward active document changes to SwiftUI
+    private var activeDocumentSubscription: AnyCancellable?
 
     /// URL of the notes folder
     @Published var notesFolder: URL?

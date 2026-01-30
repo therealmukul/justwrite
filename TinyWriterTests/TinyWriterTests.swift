@@ -4346,3 +4346,118 @@ final class PDFExportTests: XCTestCase {
         return mutable
     }
 }
+
+// MARK: - Word Count Update Tests
+
+final class WordCountUpdateTests: XCTestCase {
+
+    // MARK: - Document Change Notification Tests
+
+    func testDocumentPublishesChangesWhenTextUpdated() {
+        let document = TinyWriterDocument()
+        let expectation = XCTestExpectation(description: "Document should publish objectWillChange")
+
+        let cancellable = document.objectWillChange.sink {
+            expectation.fulfill()
+        }
+
+        // Update the document's text
+        document.attributedText = NSAttributedString(string: "Hello world")
+
+        wait(for: [expectation], timeout: 1.0)
+        cancellable.cancel()
+    }
+
+    func testDocumentManagerForwardsDocumentChanges() {
+        let manager = TinyWriterDocumentManager()
+        let document = TinyWriterDocument()
+
+        // Set the active document
+        manager.activeDocument = document
+
+        let expectation = XCTestExpectation(description: "Manager should forward document changes")
+
+        let cancellable = manager.objectWillChange.sink {
+            expectation.fulfill()
+        }
+
+        // Update the document's text - manager should forward this change
+        document.attributedText = NSAttributedString(string: "Test content")
+
+        wait(for: [expectation], timeout: 1.0)
+        cancellable.cancel()
+    }
+
+    func testWordCountCalculatesCorrectly() {
+        let document = TinyWriterDocument()
+        document.attributedText = NSAttributedString(string: "Hello world test")
+
+        let text = document.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let wordCount = text.isEmpty ? 0 : text.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .count
+
+        XCTAssertEqual(wordCount, 3, "Word count should be 3")
+    }
+
+    func testCharacterCountCalculatesCorrectly() {
+        let document = TinyWriterDocument()
+        document.attributedText = NSAttributedString(string: "Hello world")
+
+        let characterCount = document.text.count
+
+        XCTAssertEqual(characterCount, 11, "Character count should be 11")
+    }
+
+    func testWordCountUpdatesAfterTextChange() {
+        let document = TinyWriterDocument()
+
+        // Initial state
+        document.attributedText = NSAttributedString(string: "Hello")
+        var wordCount = countWords(in: document.text)
+        XCTAssertEqual(wordCount, 1)
+
+        // Update text
+        document.attributedText = NSAttributedString(string: "Hello world test")
+        wordCount = countWords(in: document.text)
+        XCTAssertEqual(wordCount, 3)
+
+        // Clear text
+        document.attributedText = NSAttributedString(string: "")
+        wordCount = countWords(in: document.text)
+        XCTAssertEqual(wordCount, 0)
+    }
+
+    func testManagerNotifiesOnActiveDocumentTextChange() {
+        let manager = TinyWriterDocumentManager()
+        let document = TinyWriterDocument()
+
+        manager.activeDocument = document
+
+        var notificationCount = 0
+        let expectation = XCTestExpectation(description: "Should receive multiple change notifications")
+        expectation.expectedFulfillmentCount = 2
+
+        let cancellable = manager.objectWillChange.sink {
+            notificationCount += 1
+            expectation.fulfill()
+        }
+
+        // Make multiple text changes
+        document.attributedText = NSAttributedString(string: "First change")
+        document.attributedText = NSAttributedString(string: "Second change")
+
+        wait(for: [expectation], timeout: 2.0)
+        XCTAssertGreaterThanOrEqual(notificationCount, 2, "Manager should forward multiple document changes")
+        cancellable.cancel()
+    }
+
+    // Helper function
+    private func countWords(in text: String) -> Int {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return 0 }
+        return trimmed.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .count
+    }
+}

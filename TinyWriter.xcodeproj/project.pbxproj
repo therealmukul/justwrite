@@ -11,6 +11,17 @@
 		A1000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000012 /* ContentView.swift */; };
 		A1000003 /* TinyWriterDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000013 /* TinyWriterDocument.swift */; };
 		A1000005 /* TinyWriterDocumentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000017 /* TinyWriterDocumentManager.swift */; };
+		A1000006 /* Color+AppAccent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000018 /* Color+AppAccent.swift */; };
+		A1000007 /* FontService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000019 /* FontService.swift */; };
+		A1000008 /* PDFExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001A /* PDFExportService.swift */; };
+		A1000009 /* FormatButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001B /* FormatButton.swift */; };
+		A100000A /* FormattingToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001C /* FormattingToolbar.swift */; };
+		A100000B /* NotesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001D /* NotesManager.swift */; };
+		A100000C /* SmoothCursorTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001E /* SmoothCursorTextView.swift */; };
+		A100000D /* RichTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100001F /* RichTextView.swift */; };
+		A100000E /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000023 /* SidebarView.swift */; };
+		A100000F /* NoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000021 /* NoteRow.swift */; };
+		A1000024 /* SettingsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022 /* SettingsPanel.swift */; };
 		A2000001 /* TinyWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011 /* TinyWriterTests.swift */; };
 		A3000001 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = A3000010 /* Fonts */; };
 /* End PBXBuildFile section */
@@ -32,6 +43,17 @@
 		A1000013 /* TinyWriterDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyWriterDocument.swift; sourceTree = "<group>"; };
 		A1000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1000017 /* TinyWriterDocumentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyWriterDocumentManager.swift; sourceTree = "<group>"; };
+		A1000018 /* Color+AppAccent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+AppAccent.swift"; sourceTree = "<group>"; };
+		A1000019 /* FontService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontService.swift; sourceTree = "<group>"; };
+		A100001A /* PDFExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExportService.swift; sourceTree = "<group>"; };
+		A100001B /* FormatButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatButton.swift; sourceTree = "<group>"; };
+		A100001C /* FormattingToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormattingToolbar.swift; sourceTree = "<group>"; };
+		A100001D /* NotesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesManager.swift; sourceTree = "<group>"; };
+		A100001E /* SmoothCursorTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmoothCursorTextView.swift; sourceTree = "<group>"; };
+		A100001F /* RichTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextView.swift; sourceTree = "<group>"; };
+		A1000023 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		A1000021 /* NoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRow.swift; sourceTree = "<group>"; };
+		A1000022 /* SettingsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPanel.swift; sourceTree = "<group>"; };
 		A1000015 /* TinyWriter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TinyWriter.entitlements; sourceTree = "<group>"; };
 		A2000010 /* TinyWriterTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinyWriterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2000011 /* TinyWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyWriterTests.swift; sourceTree = "<group>"; };
@@ -72,6 +94,11 @@
 				A1000012 /* ContentView.swift */,
 				A1000013 /* TinyWriterDocument.swift */,
 				A1000017 /* TinyWriterDocumentManager.swift */,
+				A1000033 /* Extensions */,
+				A1000034 /* Services */,
+				A1000035 /* Components */,
+				A1000036 /* Core */,
+				A1000037 /* Views */,
 				A1000014 /* Info.plist */,
 				A1000015 /* TinyWriter.entitlements */,
 				A3000010 /* Fonts */,
@@ -86,6 +113,68 @@
 				A2000010 /* TinyWriterTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A1000033 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				A1000018 /* Color+AppAccent.swift */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
+		A1000034 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A1000019 /* FontService.swift */,
+				A100001A /* PDFExportService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A1000035 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				A100001B /* FormatButton.swift */,
+				A100001C /* FormattingToolbar.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		A1000036 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				A100001D /* NotesManager.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		A1000037 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A1000038 /* Editor */,
+				A1000039 /* Sidebar */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A1000038 /* Editor */ = {
+			isa = PBXGroup;
+			children = (
+				A100001E /* SmoothCursorTextView.swift */,
+				A100001F /* RichTextView.swift */,
+			);
+			path = Editor;
+			sourceTree = "<group>";
+		};
+		A1000039 /* Sidebar */ = {
+			isa = PBXGroup;
+			children = (
+				A1000023 /* SidebarView.swift */,
+				A1000021 /* NoteRow.swift */,
+				A1000022 /* SettingsPanel.swift */,
+			);
+			path = Sidebar;
 			sourceTree = "<group>";
 		};
 		A2000031 /* TinyWriterTests */ = {
@@ -199,6 +288,17 @@
 				A1000002 /* ContentView.swift in Sources */,
 				A1000003 /* TinyWriterDocument.swift in Sources */,
 				A1000005 /* TinyWriterDocumentManager.swift in Sources */,
+				A1000006 /* Color+AppAccent.swift in Sources */,
+				A1000007 /* FontService.swift in Sources */,
+				A1000008 /* PDFExportService.swift in Sources */,
+				A1000009 /* FormatButton.swift in Sources */,
+				A100000A /* FormattingToolbar.swift in Sources */,
+				A100000B /* NotesManager.swift in Sources */,
+				A100000C /* SmoothCursorTextView.swift in Sources */,
+				A100000D /* RichTextView.swift in Sources */,
+				A100000E /* SidebarView.swift in Sources */,
+				A100000F /* NoteRow.swift in Sources */,
+				A1000024 /* SettingsPanel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
