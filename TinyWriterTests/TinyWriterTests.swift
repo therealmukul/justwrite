@@ -4711,3 +4711,151 @@ final class GrammarCheckingTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "grammarCheckingEnabled")
     }
 }
+
+// MARK: - Font Size Shortcut Tests
+
+final class FontSizeShortcutTests: XCTestCase {
+
+    let minFontSize: Double = 12
+    let maxFontSize: Double = 24
+    let fontSizeKey = "fontSize"
+
+    override func setUp() {
+        super.setUp()
+        // Reset to default font size before each test
+        UserDefaults.standard.removeObject(forKey: fontSizeKey)
+    }
+
+    override func tearDown() {
+        // Clean up after each test
+        UserDefaults.standard.removeObject(forKey: fontSizeKey)
+        super.tearDown()
+    }
+
+    // MARK: - Font Size Bounds Tests
+
+    func testFontSizeDefaultValue() {
+        // Default font size should be 16
+        let fontSize = UserDefaults.standard.object(forKey: fontSizeKey) as? Double ?? 16
+        XCTAssertEqual(fontSize, 16, "Default font size should be 16")
+    }
+
+    func testFontSizeIncrementByOne() {
+        // Set initial value
+        UserDefaults.standard.set(16.0, forKey: fontSizeKey)
+
+        // Simulate increment
+        let currentSize = UserDefaults.standard.double(forKey: fontSizeKey)
+        let newSize = min(currentSize + 1, maxFontSize)
+        UserDefaults.standard.set(newSize, forKey: fontSizeKey)
+
+        let result = UserDefaults.standard.double(forKey: fontSizeKey)
+        XCTAssertEqual(result, 17, "Font size should increment by 1")
+    }
+
+    func testFontSizeDecrementByOne() {
+        // Set initial value
+        UserDefaults.standard.set(16.0, forKey: fontSizeKey)
+
+        // Simulate decrement
+        let currentSize = UserDefaults.standard.double(forKey: fontSizeKey)
+        let newSize = max(currentSize - 1, minFontSize)
+        UserDefaults.standard.set(newSize, forKey: fontSizeKey)
+
+        let result = UserDefaults.standard.double(forKey: fontSizeKey)
+        XCTAssertEqual(result, 15, "Font size should decrement by 1")
+    }
+
+    func testFontSizeAtMaxCannotIncrease() {
+        // Set to maximum
+        UserDefaults.standard.set(maxFontSize, forKey: fontSizeKey)
+
+        // Try to increment
+        let currentSize = UserDefaults.standard.double(forKey: fontSizeKey)
+        let newSize = min(currentSize + 1, maxFontSize)
+        UserDefaults.standard.set(newSize, forKey: fontSizeKey)
+
+        let result = UserDefaults.standard.double(forKey: fontSizeKey)
+        XCTAssertEqual(result, maxFontSize, "Font size at max should not increase beyond \(maxFontSize)")
+    }
+
+    func testFontSizeAtMinCannotDecrease() {
+        // Set to minimum
+        UserDefaults.standard.set(minFontSize, forKey: fontSizeKey)
+
+        // Try to decrement
+        let currentSize = UserDefaults.standard.double(forKey: fontSizeKey)
+        let newSize = max(currentSize - 1, minFontSize)
+        UserDefaults.standard.set(newSize, forKey: fontSizeKey)
+
+        let result = UserDefaults.standard.double(forKey: fontSizeKey)
+        XCTAssertEqual(result, minFontSize, "Font size at min should not decrease below \(minFontSize)")
+    }
+
+    func testFontSizeIncrementStaysWithinBounds() {
+        // Test incrementing from various values stays within bounds
+        for size in stride(from: minFontSize, through: maxFontSize, by: 1) {
+            UserDefaults.standard.set(size, forKey: fontSizeKey)
+            let currentSize = UserDefaults.standard.double(forKey: fontSizeKey)
+            let newSize = min(currentSize + 1, maxFontSize)
+
+            XCTAssertLessThanOrEqual(newSize, maxFontSize, "Incremented font size should not exceed max")
+            XCTAssertGreaterThanOrEqual(newSize, minFontSize, "Incremented font size should not go below min")
+        }
+    }
+
+    func testFontSizeDecrementStaysWithinBounds() {
+        // Test decrementing from various values stays within bounds
+        for size in stride(from: minFontSize, through: maxFontSize, by: 1) {
+            UserDefaults.standard.set(size, forKey: fontSizeKey)
+            let currentSize = UserDefaults.standard.double(forKey: fontSizeKey)
+            let newSize = max(currentSize - 1, minFontSize)
+
+            XCTAssertLessThanOrEqual(newSize, maxFontSize, "Decremented font size should not exceed max")
+            XCTAssertGreaterThanOrEqual(newSize, minFontSize, "Decremented font size should not go below min")
+        }
+    }
+
+    func testFontSizeChangePersistsToUserDefaults() {
+        // Set a specific value
+        let testSize: Double = 20
+        UserDefaults.standard.set(testSize, forKey: fontSizeKey)
+
+        // Force synchronize
+        UserDefaults.standard.synchronize()
+
+        // Read back
+        let result = UserDefaults.standard.double(forKey: fontSizeKey)
+        XCTAssertEqual(result, testSize, "Font size change should persist to UserDefaults")
+    }
+
+    func testFontSizeMultipleIncrements() {
+        // Start at 16
+        UserDefaults.standard.set(16.0, forKey: fontSizeKey)
+
+        // Increment 5 times
+        for _ in 1...5 {
+            let currentSize = UserDefaults.standard.double(forKey: fontSizeKey)
+            let newSize = min(currentSize + 1, maxFontSize)
+            UserDefaults.standard.set(newSize, forKey: fontSizeKey)
+        }
+
+        let result = UserDefaults.standard.double(forKey: fontSizeKey)
+        XCTAssertEqual(result, 21, "Font size should be 21 after 5 increments from 16")
+    }
+
+    func testFontSizeMultipleDecrements() {
+        // Start at 16
+        UserDefaults.standard.set(16.0, forKey: fontSizeKey)
+
+        // Decrement 5 times (should stop at 12)
+        for _ in 1...5 {
+            let currentSize = UserDefaults.standard.double(forKey: fontSizeKey)
+            let newSize = max(currentSize - 1, minFontSize)
+            UserDefaults.standard.set(newSize, forKey: fontSizeKey)
+        }
+
+        let result = UserDefaults.standard.double(forKey: fontSizeKey)
+        XCTAssertEqual(result, minFontSize, "Font size should be \(minFontSize) after 5 decrements from 16 (bounded by min)")
+    }
+}

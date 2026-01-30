@@ -171,6 +171,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct TinyWriterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @AppStorage("fontSize") private var fontSize: Double = 16
+
+    private let minFontSize: Double = 12
+    private let maxFontSize: Double = 24
 
     var body: some Scene {
         WindowGroup(id: "main") {
@@ -207,11 +211,32 @@ struct TinyWriterApp: App {
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
             }
+
+            // Font size controls
+            CommandGroup(after: .textFormatting) {
+                Button("Increase Font Size") {
+                    increaseFontSize()
+                }
+                .keyboardShortcut("+", modifiers: .command)
+
+                Button("Decrease Font Size") {
+                    decreaseFontSize()
+                }
+                .keyboardShortcut("-", modifiers: .command)
+            }
         }
     }
 
     private func toggleDistractionFree() {
         guard let window = NSApp.keyWindow else { return }
         window.toggleFullScreen(nil)
+    }
+
+    private func increaseFontSize() {
+        fontSize = min(fontSize + 1, maxFontSize)
+    }
+
+    private func decreaseFontSize() {
+        fontSize = max(fontSize - 1, minFontSize)
     }
 }
