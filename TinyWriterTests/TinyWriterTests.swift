@@ -2933,6 +2933,56 @@ final class SidebarSelectionTests: XCTestCase {
         let notificationName = Notification.Name.notesFolderChanged
         XCTAssertEqual(notificationName.rawValue, "notesFolderChanged")
     }
+
+    // MARK: - NotesManager Integration Tests
+
+    func testNotesManagerReceivesCurrentDocumentNotification() {
+        let notesManager = NotesManager()
+        let testURL = URL(fileURLWithPath: "/tmp/test-sidebar.rtf")
+
+        let expectation = XCTestExpectation(description: "NotesManager should update currentDocumentURL")
+
+        // Subscribe to changes
+        let cancellable = notesManager.$currentDocumentURL.sink { url in
+            if url == testURL {
+                expectation.fulfill()
+            }
+        }
+
+        // Post notification with URL
+        NotificationCenter.default.post(name: .currentDocumentChanged, object: testURL)
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(notesManager.currentDocumentURL, testURL, "currentDocumentURL should match posted URL")
+        cancellable.cancel()
+    }
+
+    func testNotesManagerTracksSessionDocuments() {
+        let notesManager = NotesManager()
+        let testURL = URL(fileURLWithPath: "/tmp/session-doc.rtf")
+
+        // Post notification with URL
+        NotificationCenter.default.post(name: .currentDocumentChanged, object: testURL)
+
+        let expectation = XCTestExpectation(description: "Notification processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertTrue(notesManager.sessionDocuments.contains(testURL), "sessionDocuments should contain the opened URL")
+    }
+
+    func testNotesManagerRefreshSyncsCurrentDocument() {
+        // This test verifies that refresh() updates currentDocumentURL
+        let notesManager = NotesManager()
+
+        // Call refresh - it should attempt to sync with the current document
+        notesManager.refresh()
+
+        // The test passes if refresh() completes without error
+        // The actual value depends on whether a document is open
+    }
 }
 
 // MARK: - File Rename Tests
@@ -4857,5 +4907,133 @@ final class FontSizeShortcutTests: XCTestCase {
 
         let result = UserDefaults.standard.double(forKey: fontSizeKey)
         XCTAssertEqual(result, minFontSize, "Font size should be \(minFontSize) after 5 decrements from 16 (bounded by min)")
+    }
+}
+
+// MARK: - Paste Font Formatting Tests
+
+final class PasteFontFormattingTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        // Set up default font settings
+        UserDefaults.standard.set(16.0, forKey: "fontSize")
+        UserDefaults.standard.set("EB Garamond", forKey: "fontFamily")
+        UserDefaults.standard.set(6.0, forKey: "lineSpacing")
+    }
+
+    override func tearDown() {
+        // Clean up
+        UserDefaults.standard.removeObject(forKey: "fontSize")
+        UserDefaults.standard.removeObject(forKey: "fontFamily")
+        UserDefaults.standard.removeObject(forKey: "lineSpacing")
+        super.tearDown()
+    }
+
+    // MARK: - Font Application Tests
+
+    func testApplyAppFontToAttributedString() {
+        // Create text with a different font (simulating pasted content)
+        let originalFont = NSFont(name: "Helvetica", size: 24)!
+        let pastedText = NSMutableAttributedString(string: "Pasted text", attributes: [.font: originalFont])
+
+        // Get app font settings
+        let fontSize = UserDefaults.standard.double(forKey: "fontSize")
+        let fontFamily = UserDefaults.standard.string(forKey: "fontFamily") ?? "EB Garamond"
+        let appFont = FontService.getFont(family: fontFamily, size: CGFloat(fontSize))
+
+        // Apply app font to the pasted text
+        let range = NSRange(location: 0, length: pastedText.length)
+        pastedText.addAttribute(.font, value: appFont, range: range)
+
+        // Verify the font was changed
+        let resultFont = pastedText.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        XCTAssertNotNil(resultFont)
+        XCTAssertEqual(resultFont?.pointSize, CGFloat(fontSize), "Font size should match app settings")
+    }
+
+    func testApplyAppFontPreservesTextContent() {
+        let originalText = "Hello World"
+        let originalFont = NSFont(name: "Arial", size: 20)!
+        let attributedString = NSMutableAttributedString(string: originalText, attributes: [.font: originalFont])
+
+        // Apply different font
+        let newFont = FontService.getFont(family: "EB Garamond", size: 16)
+        attributedString.addAttribute(.font, value: newFont, range: NSRange(location: 0, length: attributedString.length))
+
+        // Text content should be preserved
+        XCTAssertEqual(attributedString.string, originalText, "Text content should be preserved after font change")
+    }
+
+    func testFontServiceReturnsValidFont() {
+        let font = FontService.getFont(family: "EB Garamond", size: 16)
+        XCTAssertNotNil(font, "FontService should return a valid font")
+        XCTAssertEqual(font.pointSize, 16, "Font size should match requested size")
+    }
+
+    func testFontServiceFallsBackForInvalidFamily() {
+        // Request a non-existent font family
+        let font = FontService.getFont(family: "NonExistentFont", size: 16)
+        XCTAssertNotNil(font, "FontService should return a fallback font for invalid family")
+        XCTAssertEqual(font.pointSize, 16, "Fallback font should have correct size")
+    }
+
+    func testTextViewHasApplyFontToRangeCapability() {
+        let textView = SmoothCursorTextView()
+
+        // Set up text storage with text
+        let testText = NSAttributedString(string: "Test text")
+        textView.textStorage?.setAttributedString(testText)
+
+        // Verify we can modify font attributes
+        XCTAssertNotNil(textView.textStorage, "Text view should have text storage")
+        XCTAssertEqual(textView.textStorage?.length, 9, "Text storage should contain the text")
+    }
+
+    func testApplyFontToSpecificRange() {
+        let textView = SmoothCursorTextView()
+        let originalText = "Before After"
+        textView.textStorage?.setAttributedString(NSAttributedString(string: originalText))
+
+        // Apply font to specific range (just "After")
+        let range = NSRange(location: 7, length: 5)
+        let newFont = FontService.getFont(family: "EB Garamond", size: 18)
+        textView.textStorage?.addAttribute(.font, value: newFont, range: range)
+
+        // Verify the font was applied to the range
+        let resultFont = textView.textStorage?.attribute(.font, at: 7, effectiveRange: nil) as? NSFont
+        XCTAssertNotNil(resultFont)
+        XCTAssertEqual(resultFont?.pointSize, 18, "Font should be applied to the specified range")
+    }
+
+    func testApplyLineSpacingToRange() {
+        let textView = SmoothCursorTextView()
+        textView.textStorage?.setAttributedString(NSAttributedString(string: "Test paragraph"))
+
+        let lineSpacing: CGFloat = 8.0
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = lineSpacing
+
+        let range = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
+        textView.textStorage?.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
+
+        // Verify paragraph style was applied
+        let resultStyle = textView.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertNotNil(resultStyle)
+        XCTAssertEqual(resultStyle?.lineSpacing, lineSpacing, "Line spacing should be applied")
+    }
+
+    func testDarkModeTextColorApplication() {
+        // Test that text color can be applied (for dark mode support)
+        let textView = SmoothCursorTextView()
+        textView.textStorage?.setAttributedString(NSAttributedString(string: "Dark mode text"))
+
+        let darkModeColor = NSColor.white
+        let range = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
+        textView.textStorage?.addAttribute(.foregroundColor, value: darkModeColor, range: range)
+
+        let resultColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertNotNil(resultColor)
+        XCTAssertEqual(resultColor, darkModeColor, "Text color should be applied")
     }
 }

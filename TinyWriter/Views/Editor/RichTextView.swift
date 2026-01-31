@@ -117,6 +117,9 @@ struct RichTextView: NSViewRepresentable {
         let font = FontService.getFont(family: fontFamily, size: CGFloat(fontSize))
         textView.font = font
         textView.baseFontSize = CGFloat(fontSize)
+        textView.fontFamily = fontFamily
+        textView.lineSpacing = CGFloat(lineSpacing)
+        textView.isDarkMode = darkMode
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = CGFloat(lineSpacing)
         textView.defaultParagraphStyle = paragraphStyle
@@ -175,6 +178,11 @@ struct RichTextView: NSViewRepresentable {
             textView.textStorage?.setAttributedString(attributedText)
             textView.selectedRanges = selectedRanges
         }
+
+        // Update font settings for paste formatting
+        textView.fontFamily = fontFamily
+        textView.lineSpacing = CGFloat(lineSpacing)
+        textView.isDarkMode = darkMode
 
         // Update font (size or family) while preserving bold/italic traits
         let newBaseFont = FontService.getFont(family: fontFamily, size: CGFloat(fontSize))

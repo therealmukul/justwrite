@@ -7,6 +7,9 @@ class SmoothCursorTextView: NSTextView {
     private var blinkTimer: Timer?
     private var cursorColor: NSColor = .black  // Safe default, will be updated
     var baseFontSize: CGFloat = 16  // Set from coordinator, used for fixed cursor height
+    var fontFamily: String = "EB Garamond"  // Set from coordinator, used for paste formatting
+    var lineSpacing: CGFloat = 6  // Set from coordinator, used for paste formatting
+    var isDarkMode: Bool = false  // Set from coordinator, used for paste formatting
     private var moveCursorObserver: Any?
 
     // MARK: - Cursor Setup
@@ -407,7 +410,28 @@ class SmoothCursorTextView: NSTextView {
     // MARK: - Paste/Cut/Delete Operations
 
     override func paste(_ sender: Any?) {
+        guard let textStorage = textStorage else {
+            super.paste(sender)
+            return
+        }
+
+        // Record state before paste
+        let insertionPoint = selectedRange().location
+        let lengthBefore = textStorage.length
+
+        // Perform the paste
         super.paste(sender)
+
+        // Calculate the pasted range
+        let lengthAfter = textStorage.length
+        let pastedLength = lengthAfter - lengthBefore + selectedRange().length
+        let pastedRange = NSRange(location: insertionPoint, length: max(0, pastedLength))
+
+        // Apply app font settings to pasted content
+        if pastedRange.length > 0 {
+            applyAppFormattingToRange(pastedRange)
+        }
+
         // Update cursor position after paste
         DispatchQueue.main.async { [weak self] in
             self?.updateCursorPosition(animated: true)
@@ -416,12 +440,56 @@ class SmoothCursorTextView: NSTextView {
     }
 
     override func pasteAsPlainText(_ sender: Any?) {
+        guard let textStorage = textStorage else {
+            super.pasteAsPlainText(sender)
+            return
+        }
+
+        // Record state before paste
+        let insertionPoint = selectedRange().location
+        let lengthBefore = textStorage.length
+
+        // Perform the paste
         super.pasteAsPlainText(sender)
+
+        // Calculate the pasted range
+        let lengthAfter = textStorage.length
+        let pastedLength = lengthAfter - lengthBefore + selectedRange().length
+        let pastedRange = NSRange(location: insertionPoint, length: max(0, pastedLength))
+
+        // Apply app font settings to pasted content
+        if pastedRange.length > 0 {
+            applyAppFormattingToRange(pastedRange)
+        }
+
         // Update cursor position after paste
         DispatchQueue.main.async { [weak self] in
             self?.updateCursorPosition(animated: true)
             self?.resetBlink()
         }
+    }
+
+    /// Applies the app's font, line spacing, and text color to a range of text
+    private func applyAppFormattingToRange(_ range: NSRange) {
+        guard let textStorage = textStorage else { return }
+        guard range.location + range.length <= textStorage.length else { return }
+
+        // Get the app font
+        let appFont = FontService.getFont(family: fontFamily, size: baseFontSize)
+
+        // Create paragraph style with app's line spacing
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = lineSpacing
+
+        // Get text color based on dark mode
+        let textColor = isDarkMode ? NSColor.white : NSColor.textColor
+
+        // Apply formatting
+        textStorage.beginEditing()
+        textStorage.addAttribute(.font, value: appFont, range: range)
+        textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
+        textStorage.addAttribute(.foregroundColor, value: textColor, range: range)
+        textStorage.endEditing()
     }
 
     override func cut(_ sender: Any?) {
