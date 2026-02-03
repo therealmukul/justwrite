@@ -182,7 +182,7 @@ struct RichTextView: NSViewRepresentable {
         // Update font settings for paste formatting
         textView.fontFamily = fontFamily
         textView.lineSpacing = CGFloat(lineSpacing)
-        textView.isDarkMode = darkMode
+        // NOTE: isDarkMode is updated later, after checking if it changed
 
         // Update font (size or family) while preserving bold/italic traits
         let newBaseFont = FontService.getFont(family: fontFamily, size: CGFloat(fontSize))
@@ -238,18 +238,29 @@ struct RichTextView: NSViewRepresentable {
         }
 
         // Update dark mode colors
-        let backgroundColor = darkMode ? NSColor.black : NSColor.textBackgroundColor
-        let textColor = darkMode ? NSColor.white : NSColor.textColor
+        // Use explicit colors to avoid NSColor comparison issues with system colors
+        let backgroundColor = darkMode ? NSColor.black : NSColor.white
+        let textColor = darkMode ? NSColor.white : NSColor.black
 
         // Always update cursor color - use explicit colors for CALayer compatibility
         let cursorColor = darkMode ? NSColor.white : NSColor.black
         textView.updateCursorColor(cursorColor)
 
-        if scrollView.backgroundColor != backgroundColor {
-            scrollView.backgroundColor = backgroundColor
-            textView.backgroundColor = backgroundColor
+        // Check if dark mode changed BEFORE updating the stored value
+        let darkModeChanged = textView.isDarkMode != darkMode
+
+        // Now update the stored dark mode state
+        textView.isDarkMode = darkMode
+
+        // Update background colors
+        scrollView.backgroundColor = backgroundColor
+        textView.backgroundColor = backgroundColor
+
+        // Update text color when dark mode changes to prevent invisible text
+        if darkModeChanged {
             textView.textColor = textColor
-            // Update all existing text with new color
+            textView.insertionPointColor = textColor
+            // Update all existing text with new foreground color
             if let textStorage = textView.textStorage, textStorage.length > 0 {
                 textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: textStorage.length))
             }

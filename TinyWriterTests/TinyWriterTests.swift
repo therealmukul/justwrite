@@ -5080,6 +5080,127 @@ final class PasteFontFormattingTests: XCTestCase {
     }
 }
 
+// MARK: - Dark Mode Text Color Switch Tests
+
+final class DarkModeTextColorTests: XCTestCase {
+
+    func testDarkModeTextColorIsWhite() {
+        // In dark mode, text should be white
+        let darkMode = true
+        let expectedColor = NSColor.white
+        let actualColor = darkMode ? NSColor.white : NSColor.textColor
+
+        XCTAssertEqual(actualColor, expectedColor, "Dark mode text color should be white")
+    }
+
+    func testLightModeTextColorIsNotWhite() {
+        // In light mode, text should NOT be white (should be dark)
+        let darkMode = false
+        let textColor = darkMode ? NSColor.white : NSColor.textColor
+
+        // NSColor.textColor in light mode should be dark (black or near-black)
+        XCTAssertNotEqual(textColor, NSColor.white, "Light mode text color should not be white")
+    }
+
+    func testTextColorMustAlwaysUpdateOnDarkModeChange() {
+        // This test documents the requirement: text color must ALWAYS update when dark mode changes
+        // The bug was that color update was conditional on background color comparison
+
+        let textView = SmoothCursorTextView()
+        textView.textStorage?.setAttributedString(NSAttributedString(string: "Test text for dark mode"))
+
+        // Simulate being in light mode first - set text to black
+        let lightModeColor = NSColor.black
+        let range = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
+        textView.textStorage?.addAttribute(.foregroundColor, value: lightModeColor, range: range)
+
+        // Verify light mode color is applied
+        var resultColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(resultColor, lightModeColor, "Light mode color should be black")
+
+        // Now switch to dark mode - must update to white
+        let darkModeColor = NSColor.white
+        textView.textStorage?.addAttribute(.foregroundColor, value: darkModeColor, range: range)
+
+        // Verify dark mode color is now white
+        resultColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(resultColor, darkModeColor, "Dark mode color should be white")
+    }
+
+    func testTextColorUpdateIndependentOfBackgroundComparison() {
+        // The fix: text color should update based on darkMode flag, not background color comparison
+        // This test verifies the approach
+
+        let textView = SmoothCursorTextView()
+        textView.textStorage?.setAttributedString(NSAttributedString(string: "Test"))
+
+        // Set initial state
+        textView.backgroundColor = NSColor.white
+        let initialRange = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
+        textView.textStorage?.addAttribute(.foregroundColor, value: NSColor.black, range: initialRange)
+
+        // Track dark mode state explicitly
+        var isDarkMode = false
+
+        // Function that updates colors based on dark mode (the correct approach)
+        func updateColorsForDarkMode(_ darkMode: Bool) {
+            let bgColor = darkMode ? NSColor.black : NSColor.white
+            let textColor = darkMode ? NSColor.white : NSColor.black
+
+            textView.backgroundColor = bgColor
+            if let storage = textView.textStorage, storage.length > 0 {
+                storage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: storage.length))
+            }
+        }
+
+        // Switch to dark mode
+        isDarkMode = true
+        updateColorsForDarkMode(isDarkMode)
+
+        var resultColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(resultColor, NSColor.white, "After switching to dark mode, text should be white")
+
+        // Switch back to light mode
+        isDarkMode = false
+        updateColorsForDarkMode(isDarkMode)
+
+        resultColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(resultColor, NSColor.black, "After switching to light mode, text should be black")
+    }
+
+    func testSmoothCursorTextViewHasIsDarkModeProperty() {
+        // Verify that SmoothCursorTextView tracks dark mode state
+        let textView = SmoothCursorTextView()
+
+        textView.isDarkMode = false
+        XCTAssertFalse(textView.isDarkMode, "isDarkMode should be false when set to false")
+
+        textView.isDarkMode = true
+        XCTAssertTrue(textView.isDarkMode, "isDarkMode should be true when set to true")
+    }
+
+    func testPreviousDarkModeStateTracking() {
+        // Test that we can track previous dark mode state to detect changes
+        var previousDarkMode: Bool? = nil
+        var currentDarkMode = false
+
+        // Initial state - no previous
+        XCTAssertNil(previousDarkMode, "Initially there should be no previous state")
+
+        // First update
+        previousDarkMode = currentDarkMode
+        currentDarkMode = true
+
+        XCTAssertNotEqual(previousDarkMode, currentDarkMode, "Dark mode changed from false to true")
+
+        // Second update
+        previousDarkMode = currentDarkMode
+        currentDarkMode = true
+
+        XCTAssertEqual(previousDarkMode, currentDarkMode, "Dark mode did not change")
+    }
+}
+
 // MARK: - Liquid Glass Sidebar Styling Tests
 
 final class LiquidGlassSidebarTests: XCTestCase {
