@@ -116,9 +116,14 @@ class NotesManager: ObservableObject {
     }
 
     func refresh() {
-        // Note: currentDocumentURL is managed by .currentDocumentChanged notifications
-        // from TinyWriterDocumentManager, NOT from NSDocumentController.shared.currentDocument
-        // This ensures the sidebar selection stays in sync with the actual active document
+        // Restore currentDocumentURL from active document if not already set
+        // This handles the case when sidebar reopens after being hidden
+        // (NotesManager is destroyed on hide, recreated on show with nil currentDocumentURL)
+        if currentDocumentURL == nil {
+            if let currentDoc = NSDocumentController.shared.currentDocument {
+                currentDocumentURL = currentDoc.fileURL
+            }
+        }
 
         // Get notes folder from UserDefaults
         if let bookmarkData = UserDefaults.standard.data(forKey: "notesFolder") {

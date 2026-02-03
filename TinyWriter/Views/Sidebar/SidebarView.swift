@@ -5,10 +5,14 @@ import AppKit
 struct SidebarView: View {
     @Binding var showSidebar: Bool
     @Binding var showSettings: Bool
+    @EnvironmentObject var documentManager: TinyWriterDocumentManager
     @StateObject private var notesManager = NotesManager()
     @AppStorage("darkMode") private var darkMode: Bool = false
 
-    private let sidebarWidth: CGFloat = 240
+    /// The current document URL - uses documentManager as source of truth
+    private var currentDocumentURL: URL? {
+        documentManager.activeDocument?.fileURL
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -42,7 +46,7 @@ struct SidebarView: View {
                         NoteRow(
                             name: url.deletingPathExtension().lastPathComponent,
                             url: url,
-                            isSelected: url == notesManager.currentDocumentURL,
+                            isSelected: url == currentDocumentURL,
                             darkMode: darkMode,
                             action: { notesManager.openDocument(at: url) }
                         )
@@ -60,7 +64,7 @@ struct SidebarView: View {
                         NoteRow(
                             name: url.deletingPathExtension().lastPathComponent,
                             url: url,
-                            isSelected: url == notesManager.currentDocumentURL,
+                            isSelected: url == currentDocumentURL,
                             darkMode: darkMode,
                             action: { notesManager.openDocument(at: url) }
                         )
@@ -110,24 +114,53 @@ struct SidebarView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
         }
-        .frame(width: sidebarWidth)
+        .frame(width: SidebarStyling.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background {
-            // Liquid Glass sidebar background with rounded corners
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            // Liquid Glass sidebar background (no shadow here - applied after clip)
+            RoundedRectangle(cornerRadius: SidebarStyling.cornerRadius, style: .continuous)
                 .fill(.ultraThinMaterial)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .padding(.vertical, 8)
-        .padding(.leading, 8)
+        // Glass edge definition with gradient border
+        .overlay {
+            RoundedRectangle(cornerRadius: SidebarStyling.cornerRadius, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(SidebarStyling.borderStartOpacity(darkMode: darkMode)),
+                            Color.white.opacity(SidebarStyling.borderEndOpacity(darkMode: darkMode))
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: SidebarStyling.borderLineWidth
+                )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: SidebarStyling.cornerRadius, style: .continuous))
+        // IMPORTANT: Shadows applied AFTER clipShape so they are not clipped
+        .shadow(
+            color: Color.black.opacity(SidebarStyling.primaryShadowOpacity(darkMode: darkMode)),
+            radius: SidebarStyling.primaryShadowRadius,
+            x: 0,
+            y: SidebarStyling.primaryShadowYOffset
+        )
+        .shadow(
+            color: Color.black.opacity(SidebarStyling.secondaryShadowOpacity(darkMode: darkMode)),
+            radius: SidebarStyling.secondaryShadowRadius,
+            x: 0,
+            y: SidebarStyling.secondaryShadowYOffset
+        )
+        // Increased padding for floating effect
+        .padding(.vertical, SidebarStyling.verticalPadding)
+        .padding(.leading, SidebarStyling.leadingPadding)
         .onAppear {
             notesManager.refresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: .notesFolderChanged)) { _ in
             notesManager.refresh()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .currentDocumentChanged)) { notification in
-            notesManager.currentDocumentURL = notification.object as? URL
+        .onReceive(NotificationCenter.default.publisher(for: .currentDocumentChanged)) { _ in
+            // Refresh notes list when document changes
             notesManager.refresh()
         }
         // Listen for document saves

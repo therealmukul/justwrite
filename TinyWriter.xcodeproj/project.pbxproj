@@ -22,6 +22,7 @@
 		A100000E /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000023 /* SidebarView.swift */; };
 		A100000F /* NoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000021 /* NoteRow.swift */; };
 		A1000024 /* SettingsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022 /* SettingsPanel.swift */; };
+		A1000026 /* SidebarStyling.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000025 /* SidebarStyling.swift */; };
 		A2000001 /* TinyWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011 /* TinyWriterTests.swift */; };
 		A3000001 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = A3000010 /* Fonts */; };
 /* End PBXBuildFile section */
@@ -54,6 +55,7 @@
 		A1000023 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		A1000021 /* NoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRow.swift; sourceTree = "<group>"; };
 		A1000022 /* SettingsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPanel.swift; sourceTree = "<group>"; };
+		A1000025 /* SidebarStyling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarStyling.swift; sourceTree = "<group>"; };
 		A1000015 /* TinyWriter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TinyWriter.entitlements; sourceTree = "<group>"; };
 		A2000010 /* TinyWriterTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinyWriterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2000011 /* TinyWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyWriterTests.swift; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				A1000023 /* SidebarView.swift */,
 				A1000021 /* NoteRow.swift */,
 				A1000022 /* SettingsPanel.swift */,
+				A1000025 /* SidebarStyling.swift */,
 			);
 			path = Sidebar;
 			sourceTree = "<group>";
@@ -299,6 +302,7 @@
 				A100000E /* SidebarView.swift in Sources */,
 				A100000F /* NoteRow.swift in Sources */,
 				A1000024 /* SettingsPanel.swift in Sources */,
+				A1000026 /* SidebarStyling.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
