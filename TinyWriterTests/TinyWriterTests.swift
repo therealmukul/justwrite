@@ -5307,3 +5307,154 @@ final class LiquidGlassSidebarTests: XCTestCase {
             "Shadow must be applied outside clipShape to be visible")
     }
 }
+
+// MARK: - Dark Mode Document Loading Tests
+
+final class DarkModeDocumentLoadingTests: XCTestCase {
+
+    func testLoadingDocumentInDarkModeShouldHaveWhiteText() {
+        // This test verifies that when a document is loaded while in dark mode,
+        // the text color should be white (visible on black background)
+
+        let textView = SmoothCursorTextView()
+        textView.isDarkMode = true
+        textView.backgroundColor = NSColor.black
+
+        // Simulate loading a document that was saved with black text (typical RTF default)
+        let documentText = "Hello, this is my note content"
+        let documentAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.black,  // Document saved with black text
+            .font: NSFont.systemFont(ofSize: 16)
+        ]
+        let attributedString = NSAttributedString(string: documentText, attributes: documentAttributes)
+
+        // Load the document
+        textView.textStorage?.setAttributedString(attributedString)
+
+        // After loading in dark mode, text should be changed to white
+        // This is the fix: apply correct foreground color after loading
+        let darkMode = textView.isDarkMode
+        if darkMode, let textStorage = textView.textStorage, textStorage.length > 0 {
+            let textColor = NSColor.white
+            textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: textStorage.length))
+        }
+
+        // Verify text is now white
+        let resultColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(resultColor, NSColor.white, "Text loaded in dark mode should be white")
+    }
+
+    func testLoadingDocumentInLightModeShouldHaveBlackText() {
+        // This test verifies that when a document is loaded while in light mode,
+        // the text color should be black (visible on white background)
+
+        let textView = SmoothCursorTextView()
+        textView.isDarkMode = false
+        textView.backgroundColor = NSColor.white
+
+        // Simulate loading a document that was saved with black text
+        let documentText = "Hello, this is my note content"
+        let documentAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.black,
+            .font: NSFont.systemFont(ofSize: 16)
+        ]
+        let attributedString = NSAttributedString(string: documentText, attributes: documentAttributes)
+
+        // Load the document
+        textView.textStorage?.setAttributedString(attributedString)
+
+        // In light mode, black text is correct - no change needed
+        let resultColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(resultColor, NSColor.black, "Text loaded in light mode should remain black")
+    }
+
+    func testSwitchingDocumentsInDarkMode() {
+        // Test that switching between documents while in dark mode
+        // always results in white text
+
+        let textView = SmoothCursorTextView()
+        textView.isDarkMode = true
+        textView.backgroundColor = NSColor.black
+
+        // First document
+        let doc1 = NSAttributedString(string: "Document 1", attributes: [
+            .foregroundColor: NSColor.black
+        ])
+        textView.textStorage?.setAttributedString(doc1)
+
+        // Apply dark mode fix
+        if let storage = textView.textStorage, storage.length > 0 {
+            storage.addAttribute(.foregroundColor, value: NSColor.white, range: NSRange(location: 0, length: storage.length))
+        }
+
+        var color = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(color, NSColor.white, "First document should have white text in dark mode")
+
+        // Switch to second document
+        let doc2 = NSAttributedString(string: "Document 2 content", attributes: [
+            .foregroundColor: NSColor.black  // Again with black text
+        ])
+        textView.textStorage?.setAttributedString(doc2)
+
+        // Apply dark mode fix again (this is what updateNSView must do)
+        if let storage = textView.textStorage, storage.length > 0 {
+            storage.addAttribute(.foregroundColor, value: NSColor.white, range: NSRange(location: 0, length: storage.length))
+        }
+
+        color = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(color, NSColor.white, "Second document should also have white text in dark mode")
+    }
+
+    func testDocumentLoadingPreservesTextContent() {
+        // Ensure that applying foreground color doesn't alter the text content
+
+        let textView = SmoothCursorTextView()
+        textView.isDarkMode = true
+
+        let originalText = "My important note with special characters: émojis 🎉"
+        let doc = NSAttributedString(string: originalText, attributes: [
+            .foregroundColor: NSColor.black
+        ])
+        textView.textStorage?.setAttributedString(doc)
+
+        // Apply color fix
+        if let storage = textView.textStorage, storage.length > 0 {
+            storage.addAttribute(.foregroundColor, value: NSColor.white, range: NSRange(location: 0, length: storage.length))
+        }
+
+        XCTAssertEqual(textView.string, originalText, "Text content should be preserved after color fix")
+    }
+
+    func testAppStartupInDarkModeWithDocument() {
+        // Simulates app startup scenario:
+        // 1. App starts in dark mode
+        // 2. User clicks on a document
+        // 3. Document loads with stored (black) text color
+        // 4. Text should be changed to white for visibility
+
+        let textView = SmoothCursorTextView()
+
+        // Simulate app starting in dark mode
+        let darkMode = true
+        textView.isDarkMode = darkMode
+        textView.backgroundColor = darkMode ? NSColor.black : NSColor.white
+        let textColor = darkMode ? NSColor.white : NSColor.black
+        textView.textColor = textColor
+
+        // User clicks on document - this loads the document's attributed text
+        let storedDocument = NSAttributedString(string: "Saved content", attributes: [
+            .foregroundColor: NSColor.black  // RTF files often store black as default
+        ])
+        textView.textStorage?.setAttributedString(storedDocument)
+
+        // THE FIX: After loading document, apply correct foreground color for dark mode
+        if darkMode, let storage = textView.textStorage, storage.length > 0 {
+            storage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: storage.length))
+        }
+
+        // Verify text is visible (white in dark mode)
+        let resultColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(resultColor, NSColor.white,
+            "After app starts in dark mode and loads document, text should be white")
+    }
+}

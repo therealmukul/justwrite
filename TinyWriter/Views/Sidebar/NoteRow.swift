@@ -19,10 +19,10 @@ struct NoteRow: View {
             HStack(spacing: 10) {
                 Image(systemName: "doc.text.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(isSelected ? .white : .secondary)
+                    .foregroundStyle(isSelected ? .white : (darkMode ? .white.opacity(0.6) : .secondary))
                 Text(name.isEmpty ? "Untitled" : name)
                     .font(.system(size: 13, weight: isSelected ? .medium : .regular))
-                    .foregroundStyle(isSelected ? .white : .primary)
+                    .foregroundStyle(isSelected ? .white : (darkMode ? .white : .primary))
                     .lineLimit(1)
                 Spacer()
             }

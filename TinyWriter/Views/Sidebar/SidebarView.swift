@@ -20,12 +20,12 @@ struct SidebarView: View {
             HStack {
                 Text("Notes")
                     .font(.headline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(darkMode ? .white : .primary)
                 Spacer()
                 Button(action: { withAnimation(.bouncy) { showSidebar = false } }) {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(darkMode ? .white.opacity(0.6) : .secondary)
                         .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
@@ -74,7 +74,7 @@ struct SidebarView: View {
                     if notesManager.notesInFolder.isEmpty && notesManager.sessionDocuments.isEmpty {
                         Text("No notes yet")
                             .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(darkMode ? .white.opacity(0.6) : .secondary)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                     }
@@ -101,9 +101,9 @@ struct SidebarView: View {
                         Spacer()
                         Image(systemName: showSettings ? "chevron.down" : "chevron.up")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(darkMode ? .white.opacity(0.6) : .secondary)
                     }
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(darkMode ? .white : .primary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .contentShape(Rectangle()) // Make entire area clickable
@@ -117,23 +117,27 @@ struct SidebarView: View {
         .frame(width: SidebarStyling.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background {
-            // Liquid Glass sidebar background (no shadow here - applied after clip)
+            // Different background for light vs dark mode
             RoundedRectangle(cornerRadius: SidebarStyling.cornerRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(darkMode
+                    ? AnyShapeStyle(Color(nsColor: NSColor(white: 0.18, alpha: 1.0)))  // Solid dark gray like Mail
+                    : AnyShapeStyle(.ultraThinMaterial))  // Translucent glass for light mode
         }
-        // Glass edge definition with gradient border
+        // Border styling - uniform in dark mode, gradient in light mode
         .overlay {
             RoundedRectangle(cornerRadius: SidebarStyling.cornerRadius, style: .continuous)
                 .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(SidebarStyling.borderStartOpacity(darkMode: darkMode)),
-                            Color.white.opacity(SidebarStyling.borderEndOpacity(darkMode: darkMode))
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: SidebarStyling.borderLineWidth
+                    darkMode
+                        ? AnyShapeStyle(Color.white.opacity(0.15))  // Subtle uniform border
+                        : AnyShapeStyle(LinearGradient(
+                            colors: [
+                                Color.white.opacity(SidebarStyling.borderStartOpacity(darkMode: darkMode)),
+                                Color.white.opacity(SidebarStyling.borderEndOpacity(darkMode: darkMode))
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )),
+                    lineWidth: darkMode ? 1.0 : SidebarStyling.borderLineWidth
                 )
         }
         .clipShape(RoundedRectangle(cornerRadius: SidebarStyling.cornerRadius, style: .continuous))

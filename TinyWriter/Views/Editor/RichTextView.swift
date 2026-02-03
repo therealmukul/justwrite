@@ -148,6 +148,12 @@ struct RichTextView: NSViewRepresentable {
         // Set initial attributed text
         textView.textStorage?.setAttributedString(attributedText)
 
+        // Apply correct text color for initial dark mode state
+        // (the attributed text may contain black foreground color from the document)
+        if darkMode, let textStorage = textView.textStorage, textStorage.length > 0 {
+            textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: textStorage.length))
+        }
+
         // Observe frame changes to update centering
         scrollView.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(
@@ -177,6 +183,13 @@ struct RichTextView: NSViewRepresentable {
             let selectedRanges = textView.selectedRanges
             textView.textStorage?.setAttributedString(attributedText)
             textView.selectedRanges = selectedRanges
+
+            // Apply correct text color for current dark mode state when loading new document
+            // The document may have been saved with black text, which would be invisible in dark mode
+            if darkMode, let textStorage = textView.textStorage, textStorage.length > 0 {
+                let textColor = NSColor.white
+                textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: textStorage.length))
+            }
         }
 
         // Update font settings for paste formatting
