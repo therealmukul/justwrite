@@ -52,6 +52,7 @@ struct ContentView: View {
                 if showSidebar {
                     SidebarView(showSidebar: $showSidebar, showSettings: $showSettings)
                         .transition(.move(edge: .leading).combined(with: .opacity))
+                        .zIndex(1)
                 }
 
                 // Floating formatting toolbar
