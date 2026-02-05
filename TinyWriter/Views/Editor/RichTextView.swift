@@ -184,11 +184,50 @@ struct RichTextView: NSViewRepresentable {
             textView.textStorage?.setAttributedString(attributedText)
             textView.selectedRanges = selectedRanges
 
-            // Apply correct text color for current dark mode state when loading new document
-            // The document may have been saved with black text, which would be invisible in dark mode
-            if darkMode, let textStorage = textView.textStorage, textStorage.length > 0 {
-                let textColor = NSColor.white
-                textStorage.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: 0, length: textStorage.length))
+            // Apply all current app settings to the newly loaded document content.
+            // The document's RTF may have been saved with different font/spacing/color values.
+            if let textStorage = textView.textStorage, textStorage.length > 0 {
+                let newBaseFont = FontService.getFont(family: fontFamily, size: CGFloat(fontSize))
+                let fontManager = NSFontManager.shared
+                let fullRange = NSRange(location: 0, length: textStorage.length)
+
+                textStorage.beginEditing()
+
+                // Apply current font size/family while preserving bold/italic traits
+                textStorage.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
+                    let traits: NSFontTraitMask
+                    if let oldFont = value as? NSFont {
+                        traits = fontManager.traits(of: oldFont)
+                    } else {
+                        traits = []
+                    }
+                    var updatedFont = newBaseFont
+                    if traits.contains(.boldFontMask) {
+                        updatedFont = fontManager.convert(updatedFont, toHaveTrait: .boldFontMask)
+                    }
+                    if traits.contains(.italicFontMask) {
+                        updatedFont = fontManager.convert(updatedFont, toHaveTrait: .italicFontMask)
+                    }
+                    textStorage.addAttribute(.font, value: updatedFont, range: range)
+                }
+
+                // Apply current line spacing while preserving alignment
+                let newLineSpacing = CGFloat(lineSpacing)
+                textStorage.enumerateAttribute(.paragraphStyle, in: fullRange, options: []) { value, range, _ in
+                    let newStyle = NSMutableParagraphStyle()
+                    if let oldStyle = value as? NSParagraphStyle {
+                        newStyle.setParagraphStyle(oldStyle)
+                    }
+                    newStyle.lineSpacing = newLineSpacing
+                    textStorage.addAttribute(.paragraphStyle, value: newStyle, range: range)
+                }
+
+                // Apply dark mode text color
+                if darkMode {
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.white, range: fullRange)
+                }
+
+                textStorage.endEditing()
             }
         }
 

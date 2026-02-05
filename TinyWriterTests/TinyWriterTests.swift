@@ -5458,3 +5458,180 @@ final class DarkModeDocumentLoadingTests: XCTestCase {
             "After app starts in dark mode and loads document, text should be white")
     }
 }
+
+// MARK: - Document Switch Settings Tests
+
+final class DocumentSwitchSettingsTests: XCTestCase {
+
+    /// Helper that simulates the fix: apply current app settings to newly loaded document text.
+    /// This mirrors the logic that updateNSView should perform after setAttributedString.
+    private func applyCurrentSettings(
+        to textView: SmoothCursorTextView,
+        fontFamily: String,
+        fontSize: CGFloat,
+        lineSpacing: CGFloat,
+        darkMode: Bool
+    ) {
+        guard let textStorage = textView.textStorage, textStorage.length > 0 else { return }
+
+        let newBaseFont = FontService.getFont(family: fontFamily, size: fontSize)
+        let fontManager = NSFontManager.shared
+        let fullRange = NSRange(location: 0, length: textStorage.length)
+
+        textStorage.beginEditing()
+
+        // Apply font while preserving bold/italic
+        textStorage.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
+            let traits: NSFontTraitMask
+            if let oldFont = value as? NSFont {
+                traits = fontManager.traits(of: oldFont)
+            } else {
+                traits = []
+            }
+            var updatedFont = newBaseFont
+            if traits.contains(.boldFontMask) {
+                updatedFont = fontManager.convert(updatedFont, toHaveTrait: .boldFontMask)
+            }
+            if traits.contains(.italicFontMask) {
+                updatedFont = fontManager.convert(updatedFont, toHaveTrait: .italicFontMask)
+            }
+            textStorage.addAttribute(.font, value: updatedFont, range: range)
+        }
+
+        // Apply line spacing while preserving alignment
+        textStorage.enumerateAttribute(.paragraphStyle, in: fullRange, options: []) { value, range, _ in
+            let newStyle = NSMutableParagraphStyle()
+            if let oldStyle = value as? NSParagraphStyle {
+                newStyle.setParagraphStyle(oldStyle)
+            }
+            newStyle.lineSpacing = lineSpacing
+            textStorage.addAttribute(.paragraphStyle, value: newStyle, range: range)
+        }
+
+        // Apply dark mode text color
+        if darkMode {
+            textStorage.addAttribute(.foregroundColor, value: NSColor.white, range: fullRange)
+        }
+
+        textStorage.endEditing()
+    }
+
+    func testFontAppliedOnDocumentSwitch() {
+        let textView = SmoothCursorTextView()
+
+        // Document saved with old font (system 14pt)
+        let oldFont = NSFont.systemFont(ofSize: 14)
+        let doc = NSAttributedString(string: "Hello from old document", attributes: [
+            .font: oldFont
+        ])
+        textView.textStorage?.setAttributedString(doc)
+
+        // Current app setting: fontSize 20, System font
+        applyCurrentSettings(to: textView, fontFamily: "System", fontSize: 20, lineSpacing: 6, darkMode: false)
+
+        // Verify font size was updated
+        let resultFont = textView.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        XCTAssertEqual(resultFont?.pointSize, 20, "Font size should be updated to current app setting (20)")
+    }
+
+    func testLineSpacingAppliedOnDocumentSwitch() {
+        let textView = SmoothCursorTextView()
+
+        // Document saved with line spacing 4
+        let oldStyle = NSMutableParagraphStyle()
+        oldStyle.lineSpacing = 4
+        let doc = NSAttributedString(string: "Content with old spacing", attributes: [
+            .font: NSFont.systemFont(ofSize: 16),
+            .paragraphStyle: oldStyle
+        ])
+        textView.textStorage?.setAttributedString(doc)
+
+        // Verify old spacing is present
+        let beforeStyle = textView.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(beforeStyle?.lineSpacing, 4, "Before fix, line spacing should be 4 from the document")
+
+        // Current app setting: line spacing 12
+        applyCurrentSettings(to: textView, fontFamily: "System", fontSize: 16, lineSpacing: 12, darkMode: false)
+
+        // Verify line spacing was updated
+        let afterStyle = textView.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(afterStyle?.lineSpacing, 12, "Line spacing should be updated to current app setting (12)")
+    }
+
+    func testBoldItalicPreservedOnDocumentSwitch() {
+        let textView = SmoothCursorTextView()
+        let fontManager = NSFontManager.shared
+
+        // Document has "Hello " (regular) + "World" (bold italic) saved with 14pt system font
+        let regularFont = NSFont.systemFont(ofSize: 14)
+        var boldItalicFont = fontManager.convert(regularFont, toHaveTrait: .boldFontMask)
+        boldItalicFont = fontManager.convert(boldItalicFont, toHaveTrait: .italicFontMask)
+
+        let mutable = NSMutableAttributedString(string: "Hello ", attributes: [.font: regularFont])
+        mutable.append(NSAttributedString(string: "World", attributes: [.font: boldItalicFont]))
+        textView.textStorage?.setAttributedString(mutable)
+
+        // Current app setting: fontSize 20
+        applyCurrentSettings(to: textView, fontFamily: "System", fontSize: 20, lineSpacing: 6, darkMode: false)
+
+        // "Hello " should be regular 20pt
+        let regularResult = textView.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        XCTAssertEqual(regularResult?.pointSize, 20, "Regular text should be 20pt")
+        let regularTraits = fontManager.traits(of: regularResult!)
+        XCTAssertFalse(regularTraits.contains(.boldFontMask), "Regular text should not be bold")
+
+        // "World" should be bold italic 20pt
+        let boldItalicResult = textView.textStorage?.attribute(.font, at: 6, effectiveRange: nil) as? NSFont
+        XCTAssertEqual(boldItalicResult?.pointSize, 20, "Bold italic text should be 20pt")
+        let biTraits = fontManager.traits(of: boldItalicResult!)
+        XCTAssertTrue(biTraits.contains(.boldFontMask), "Bold trait should be preserved")
+        XCTAssertTrue(biTraits.contains(.italicFontMask), "Italic trait should be preserved")
+    }
+
+    func testAlignmentPreservedOnDocumentSwitch() {
+        let textView = SmoothCursorTextView()
+
+        // Document saved with center alignment and line spacing 4
+        let centeredStyle = NSMutableParagraphStyle()
+        centeredStyle.alignment = .center
+        centeredStyle.lineSpacing = 4
+        let doc = NSAttributedString(string: "Centered text", attributes: [
+            .font: NSFont.systemFont(ofSize: 16),
+            .paragraphStyle: centeredStyle
+        ])
+        textView.textStorage?.setAttributedString(doc)
+
+        // Current app setting: line spacing 10
+        applyCurrentSettings(to: textView, fontFamily: "System", fontSize: 16, lineSpacing: 10, darkMode: false)
+
+        // Line spacing should be updated
+        let resultStyle = textView.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(resultStyle?.lineSpacing, 10, "Line spacing should be updated to 10")
+
+        // Alignment should be preserved
+        XCTAssertEqual(resultStyle?.alignment, .center, "Center alignment should be preserved after settings update")
+    }
+
+    func testDarkModeColorAppliedOnDocumentSwitch() {
+        let textView = SmoothCursorTextView()
+        textView.isDarkMode = true
+
+        // Document saved with black text
+        let doc = NSAttributedString(string: "Dark mode content", attributes: [
+            .font: NSFont.systemFont(ofSize: 16),
+            .foregroundColor: NSColor.black
+        ])
+        textView.textStorage?.setAttributedString(doc)
+
+        // Verify black text before fix
+        let beforeColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(beforeColor, NSColor.black, "Before fix, text should be black from the document")
+
+        // Apply settings with dark mode ON
+        applyCurrentSettings(to: textView, fontFamily: "System", fontSize: 16, lineSpacing: 6, darkMode: true)
+
+        // Verify text is now white
+        let afterColor = textView.textStorage?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(afterColor, NSColor.white, "In dark mode, text should be changed to white")
+    }
+}

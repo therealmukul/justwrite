@@ -43,6 +43,7 @@
 		A1000012 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A1000013 /* TinyWriterDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyWriterDocument.swift; sourceTree = "<group>"; };
 		A1000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1000015 /* TinyWriter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TinyWriter.entitlements; sourceTree = "<group>"; };
 		A1000017 /* TinyWriterDocumentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyWriterDocumentManager.swift; sourceTree = "<group>"; };
 		A1000018 /* Color+AppAccent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+AppAccent.swift"; sourceTree = "<group>"; };
 		A1000019 /* FontService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontService.swift; sourceTree = "<group>"; };
@@ -52,11 +53,10 @@
 		A100001D /* NotesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesManager.swift; sourceTree = "<group>"; };
 		A100001E /* SmoothCursorTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmoothCursorTextView.swift; sourceTree = "<group>"; };
 		A100001F /* RichTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextView.swift; sourceTree = "<group>"; };
-		A1000023 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		A1000021 /* NoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRow.swift; sourceTree = "<group>"; };
 		A1000022 /* SettingsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPanel.swift; sourceTree = "<group>"; };
+		A1000023 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		A1000025 /* SidebarStyling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarStyling.swift; sourceTree = "<group>"; };
-		A1000015 /* TinyWriter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TinyWriter.entitlements; sourceTree = "<group>"; };
 		A2000010 /* TinyWriterTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TinyWriterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2000011 /* TinyWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TinyWriterTests.swift; sourceTree = "<group>"; };
 		A3000010 /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fonts; sourceTree = "<group>"; };
@@ -449,10 +449,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TinyWriter/TinyWriter.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 252WYS99PD;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TinyWriter/Info.plist;
@@ -477,10 +478,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TinyWriter/TinyWriter.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 252WYS99PD;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TinyWriter/Info.plist;
@@ -566,7 +568,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = A1000050 /* Project object */;
 }
