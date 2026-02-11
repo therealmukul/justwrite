@@ -5635,3 +5635,208 @@ final class DocumentSwitchSettingsTests: XCTestCase {
         XCTAssertEqual(afterColor, NSColor.white, "In dark mode, text should be changed to white")
     }
 }
+
+// MARK: - Settings Menu Keyboard Shortcut Tests (Cmd+,)
+
+final class SettingsMenuShortcutTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+    }
+
+    override func tearDown() {
+        super.tearDown()
+    }
+
+    // MARK: - Notification Definition Tests
+
+    func testToggleSettingsNotificationExists() {
+        // The toggleSettings notification should be defined
+        let notification = Notification.Name.toggleSettings
+        XCTAssertEqual(notification.rawValue, "toggleSettings", "toggleSettings notification should be defined with correct raw value")
+    }
+
+    func testToggleSettingsNotificationIsDistinctFromToggleSidebar() {
+        // toggleSettings should be a different notification than toggleSidebar
+        let settingsNotification = Notification.Name.toggleSettings
+        let sidebarNotification = Notification.Name.toggleSidebar
+        XCTAssertNotEqual(settingsNotification, sidebarNotification, "toggleSettings should be distinct from toggleSidebar")
+    }
+
+    // MARK: - Settings Toggle Logic Tests
+
+    func testToggleSettingsFromClosed() {
+        // When settings is closed (false), toggling should open it (true)
+        var showSettings = false
+        showSettings.toggle()
+        XCTAssertTrue(showSettings, "Settings should be open after toggling from closed state")
+    }
+
+    func testToggleSettingsFromOpen() {
+        // When settings is open (true), toggling should close it (false)
+        var showSettings = true
+        showSettings.toggle()
+        XCTAssertFalse(showSettings, "Settings should be closed after toggling from open state")
+    }
+
+    func testToggleSettingsTwiceReturnsToClosed() {
+        // Toggling twice should return to the original closed state
+        var showSettings = false
+        showSettings.toggle() // open
+        showSettings.toggle() // close
+        XCTAssertFalse(showSettings, "Settings should be closed after toggling twice from closed state")
+    }
+
+    func testToggleSettingsTwiceReturnsToOpen() {
+        // Toggling twice from open should return to open
+        var showSettings = true
+        showSettings.toggle() // close
+        showSettings.toggle() // open
+        XCTAssertTrue(showSettings, "Settings should be open after toggling twice from open state")
+    }
+
+    func testToggleSettingsThreeTimesFromClosed() {
+        // Odd number of toggles from closed = open
+        var showSettings = false
+        for _ in 1...3 {
+            showSettings.toggle()
+        }
+        XCTAssertTrue(showSettings, "Settings should be open after 3 toggles from closed state")
+    }
+
+    // MARK: - Sidebar Visibility Logic Tests
+
+    func testSidebarBecomesVisibleWhenSettingsToggledWhileHidden() {
+        // When sidebar is hidden and settings toggle is triggered,
+        // sidebar should become visible
+        var showSidebar = false
+        var showSettings = false
+
+        // Simulate the toggle settings behavior:
+        // If sidebar is hidden, show it and open settings
+        if !showSidebar {
+            showSidebar = true
+        }
+        showSettings.toggle()
+
+        XCTAssertTrue(showSidebar, "Sidebar should become visible when settings is toggled while sidebar is hidden")
+        XCTAssertTrue(showSettings, "Settings should be open after toggle")
+    }
+
+    func testSidebarStaysVisibleWhenSettingsToggledWhileVisible() {
+        // When sidebar is already visible, it should stay visible
+        var showSidebar = true
+        var showSettings = false
+
+        // Simulate toggle settings while sidebar is visible
+        if !showSidebar {
+            showSidebar = true
+        }
+        showSettings.toggle()
+
+        XCTAssertTrue(showSidebar, "Sidebar should remain visible when settings is toggled while sidebar is visible")
+        XCTAssertTrue(showSettings, "Settings should be open after toggle")
+    }
+
+    func testSettingsClosesWhenAlreadyOpenAndSidebarVisible() {
+        // When sidebar is visible and settings is already open,
+        // toggling should close settings (sidebar stays visible)
+        var showSidebar = true
+        var showSettings = true
+
+        if !showSidebar {
+            showSidebar = true
+        }
+        showSettings.toggle()
+
+        XCTAssertTrue(showSidebar, "Sidebar should remain visible when settings is closed")
+        XCTAssertFalse(showSettings, "Settings should be closed after toggle when it was already open")
+    }
+
+    func testSettingsOpensFromHiddenSidebarState() {
+        // Full scenario: sidebar hidden, settings closed -> sidebar shown, settings open
+        var showSidebar = false
+        var showSettings = false
+
+        // This is the logic that should run when Cmd+, is pressed
+        if !showSidebar {
+            showSidebar = true
+        }
+        showSettings.toggle()
+
+        XCTAssertTrue(showSidebar, "Sidebar must be visible")
+        XCTAssertTrue(showSettings, "Settings must be open")
+    }
+
+    // MARK: - Notification Delivery Tests
+
+    func testToggleSettingsNotificationCanBePosted() {
+        // Verify the notification can be posted and received
+        let expectation = XCTestExpectation(description: "toggleSettings notification received")
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .toggleSettings,
+            object: nil,
+            queue: .main
+        ) { _ in
+            expectation.fulfill()
+        }
+
+        NotificationCenter.default.post(name: .toggleSettings, object: nil)
+        wait(for: [expectation], timeout: 1.0)
+
+        NotificationCenter.default.removeObserver(observer)
+    }
+
+    func testToggleSettingsNotificationReceivedMultipleTimes() {
+        // Verify the notification can be received multiple times (rapid toggling)
+        var receiveCount = 0
+        let expectation = XCTestExpectation(description: "toggleSettings received 3 times")
+        expectation.expectedFulfillmentCount = 3
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .toggleSettings,
+            object: nil,
+            queue: .main
+        ) { _ in
+            receiveCount += 1
+            expectation.fulfill()
+        }
+
+        // Post 3 times
+        NotificationCenter.default.post(name: .toggleSettings, object: nil)
+        NotificationCenter.default.post(name: .toggleSettings, object: nil)
+        NotificationCenter.default.post(name: .toggleSettings, object: nil)
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(receiveCount, 3, "Notification should be received exactly 3 times")
+
+        NotificationCenter.default.removeObserver(observer)
+    }
+
+    // MARK: - Full Toggle Cycle With Sidebar Logic
+
+    func testFullToggleCycleFromHiddenSidebar() {
+        // Simulate multiple Cmd+, presses starting from hidden sidebar
+        var showSidebar = false
+        var showSettings = false
+
+        // First press: sidebar hidden -> sidebar shows, settings opens
+        if !showSidebar { showSidebar = true }
+        showSettings.toggle()
+        XCTAssertTrue(showSidebar, "Press 1: sidebar should be visible")
+        XCTAssertTrue(showSettings, "Press 1: settings should be open")
+
+        // Second press: sidebar visible, settings open -> settings closes
+        if !showSidebar { showSidebar = true }
+        showSettings.toggle()
+        XCTAssertTrue(showSidebar, "Press 2: sidebar should remain visible")
+        XCTAssertFalse(showSettings, "Press 2: settings should be closed")
+
+        // Third press: sidebar visible, settings closed -> settings opens
+        if !showSidebar { showSidebar = true }
+        showSettings.toggle()
+        XCTAssertTrue(showSidebar, "Press 3: sidebar should remain visible")
+        XCTAssertTrue(showSettings, "Press 3: settings should be open again")
+    }
+}

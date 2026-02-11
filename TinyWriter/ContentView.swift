@@ -119,6 +119,14 @@ struct ContentView: View {
                 showSidebar.toggle()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSettings)) { _ in
+            withAnimation(.bouncy) {
+                if !showSidebar {
+                    showSidebar = true
+                }
+                showSettings.toggle()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openNoteRequest)) { notification in
             guard let url = notification.object as? URL else { return }
             documentManager.openTinyWriterDocument(at: url)

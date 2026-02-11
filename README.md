@@ -24,11 +24,13 @@ A distraction-free writing app for macOS. Just open it and start writing.
 | Increase Font Size | ⌘ + |
 | Decrease Font Size | ⌘ - |
 | Toggle Sidebar | ⌘ \ |
+| Toggle Settings | ⌘ , |
+| Toggle Dark Mode | ⌘ ⇧ L |
 | Distraction Free Mode | ⌘ ⇧ D |
 
 ## Settings
 
-Open the sidebar and click **Settings** to customize:
+Press **⌘ ,** or open the sidebar and click **Settings** to customize:
 
 - Font family and size
 - Line spacing and width

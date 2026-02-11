@@ -41,6 +41,7 @@ extension Notification.Name {
     static let formattingDidChange = Notification.Name("formattingDidChange")
     static let grammarCheckingChanged = Notification.Name("grammarCheckingChanged")
     static let spellCheckingChanged = Notification.Name("spellCheckingChanged")
+    static let toggleSettings = Notification.Name("toggleSettings")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -172,6 +173,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 struct TinyWriterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @AppStorage("fontSize") private var fontSize: Double = 16
+    @AppStorage("darkMode") private var darkMode: Bool = false
 
     private let minFontSize: Double = 12
     private let maxFontSize: Double = 24
@@ -204,12 +206,22 @@ struct TinyWriterApp: App {
                     NotificationCenter.default.post(name: .toggleSidebar, object: nil)
                 }
                 .keyboardShortcut("\\", modifiers: .command)
+
+                Button("Toggle Settings") {
+                    NotificationCenter.default.post(name: .toggleSettings, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
             CommandGroup(after: .windowArrangement) {
                 Button("Distraction Free") {
                     toggleDistractionFree()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+
+                Button("Toggle Dark Mode") {
+                    darkMode.toggle()
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
             }
 
             // Font size controls
